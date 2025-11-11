@@ -17,6 +17,89 @@
 pip install -r requirements.txt
 ```
 
+
+## Инструкция для установки
+
+### 1. Скачивание проекта
+```bash
+git clone https://github.com/megastormdoto/CryptoCore
+cd CryptoCore
+```
+
+### 2. Установка зависимостей
+
+**Для Windows:**
+```cmd
+build.bat
+```
+
+**Для Linux/macOS:**
+```bash
+make build
+```
+
+**Или вручную:**
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Активация виртуального окружения (рекомендуется)
+```cmd
+# Windows
+.venv\Scripts\activate
+
+# Linux/macOS
+source .venv/bin/activate
+```
+
+### 4. Использование
+
+**Шифрование файла:**
+```bash
+python main.py --algorithm aes --mode ecb --encrypt \
+    --key 00112233445566778899aabbccddeeff \
+    --input test.txt --output encrypted.bin
+```
+
+**Дешифрование файла:**
+```bash
+python main.py --algorithm aes --mode ecb --decrypt \
+    --key 00112233445566778899aabbccddeeff \
+    --input encrypted.bin --output decrypted.txt
+```
+
+### 5. Проверка работы
+```bash
+# Запуск тестов
+python test_ecb_all.py
+python test_cli.py
+```
+
+## Пример полного цикла
+```bash
+# Шифруем тестовый файл
+python main.py --algorithm aes --mode ecb --encrypt \
+    --key 00112233445566778899aabbccddeeff \
+    --input test.txt --output test_encrypted.bin
+
+# Дешифруем обратно
+python main.py --algorithm aes --mode ecb --decrypt \
+    --key 00112233445566778899aabbccddeeff \
+    --input test_encrypted.bin --output test_decrypted.txt
+
+# Проверяем результат
+python -c "print('SUCCESS!' if open('test.txt').read() == open('test_decrypted.txt').read() else 'FAILED')"
+```
+
+##  Параметры командной строки
+- `--algorithm`: Алгоритм шифрования (только `aes`)
+- `--mode`: Режим работы (только `ecb`)
+- `--encrypt/--decrypt`: Режим шифрования/дешифрования
+- `--key`: Ключ в HEX-формате (32 символа)
+- `--input`: Входной файл
+- `--output`: Выходной файл (опционально)
+
+
 ##  Использование
 
 ### Основной способ (из корня проекта):
