@@ -1,121 +1,78 @@
 #!/usr/bin/env python3
-
 import sys
 import os
 
-# Добавляем текущую папку в путь
 sys.path.insert(0, os.path.dirname(__file__))
 
 from cli_parser import CLIParser
 from file_io import FileIO
-
-# Класс ECBMode прямо здесь (чтобы избежать проблем с импортом)
-from Crypto.Cipher import AES
-
-
-class ECBMode:
-    def __init__(self, key):
-        if len(key) != 16:
-            raise ValueError("Key must be 16 bytes")
-        self.key = key
-        self.block_size = 16
-
-    def encrypt(self, plaintext):
-        padded_data = self._pkcs7_pad(plaintext)
-        cipher = AES.new(self.key, AES.MODE_ECB)
-
-        encrypted_blocks = []
-        for i in range(0, len(padded_data), self.block_size):
-            block = padded_data[i:i + self.block_size]
-            encrypted_block = cipher.encrypt(block)
-            encrypted_blocks.append(encrypted_block)
-
-        return b''.join(encrypted_blocks)
-
-    def decrypt(self, ciphertext):
-        if len(ciphertext) % self.block_size != 0:
-            raise ValueError("Ciphertext must be multiple of block size")
-
-        cipher = AES.new(self.key, AES.MODE_ECB)
-
-        decrypted_blocks = []
-        for i in range(0, len(ciphertext), self.block_size):
-            block = ciphertext[i:i + self.block_size]
-            decrypted_block = cipher.decrypt(block)
-            decrypted_blocks.append(decrypted_block)
-
-        decrypted_data = b''.join(decrypted_blocks)
-        return self._pkcs7_unpad(decrypted_data)
-
-    def _pkcs7_pad(self, data):
-        padding_length = self.block_size - (len(data) % self.block_size)
-        padding = bytes([padding_length] * padding_length)
-        return data + padding
-
-    def _pkcs7_unpad(self, data):
-        if len(data) == 0:
-            return data
-
-        padding_length = data[-1]
-
-        if padding_length < 1 or padding_length > self.block_size:
-            raise ValueError("Invalid padding")
-
-        if data[-padding_length:] != bytes([padding_length] * padding_length):
-            raise ValueError("Invalid padding")
-
-        return data[:-padding_length]
-
 
 class CryptoCore:
     def __init__(self):
         self.parser = CLIParser()
 
     def run(self):
-        """Main application method"""
         try:
-            # Parse command line arguments
             args = self.parser.parse_args()
-
-            # Convert key from HEX to bytes
             key_bytes = bytes.fromhex(args.key)
 
-            # Verify key size
             if len(key_bytes) != 16:
                 print("Error: Key must be 16 bytes for AES-128", file=sys.stderr)
                 sys.exit(1)
 
-            # Read input file
+            iv = None
             input_data = FileIO.read_file(args.input)
 
-            # Perform operation
-            if args.algorithm == 'aes' and args.mode == 'ecb':
-                ecb = ECBMode(key_bytes)
-
-                if args.encrypt:
-                    output_data = ecb.encrypt(input_data)
-                    print(f"File encrypted: {args.input} -> {args.output}")
-                else:
-                    output_data = ecb.decrypt(input_data)
-                    print(f"File decrypted: {args.input} -> {args.output}")
-
-                # Write output file
-                FileIO.write_file(args.output, output_data)
-
+            if args.encrypt:
+                if args.mode != 'ecb':
+                    iv = os.urandom(16)
             else:
-                print("Error: Unsupported algorithm/mode", file=sys.stderr)
-                sys.exit(1)
+                if args.mode != 'ecb':
+                    if args.iv:
+                        iv = bytes.fromhex(args.iv)
+                    else:
+                        if len(input_data) < 16:
+                            print("Error: Input file too short to contain IV", file=sys.stderr)
+                            sys.exit(1)
+                        iv = input_data[:16]
+                        input_data = input_data[16:]
+
+            if args.mode == 'ecb':
+                from modes.ecb import ECBMode
+                mode_instance = ECBMode(key_bytes)
+            elif args.mode == 'cbc':
+                from modes.cbc import CBCMode
+                mode_instance = CBCMode(key_bytes)
+            elif args.mode == 'cfb':
+                from modes.cfb import CFBMode
+                mode_instance = CFBMode(key_bytes)
+            elif args.mode == 'ofb':
+                from modes.ofb import OFBMode
+                mode_instance = OFBMode(key_bytes)
+            elif args.mode == 'ctr':
+                from modes.ctr import CTRMode
+                mode_instance = CTRMode(key_bytes)
+            else:
+                raise ValueError(f"Unsupported mode: {args.mode}")
+
+            if args.encrypt:
+                output_data = mode_instance.encrypt(input_data, iv)
+                if args.mode != 'ecb' and iv is not None:
+                    output_data = iv + output_data
+                print(f"File encrypted: {args.input} -> {args.output}")
+            else:
+                output_data = mode_instance.decrypt(input_data, iv)
+                print(f"File decrypted: {args.input} -> {args.output}")
+
+            FileIO.write_file(args.output, output_data)
 
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
-
 def main():
-    """Application entry point"""
     cryptocore = CryptoCore()
     cryptocore.run()
-
 
 if __name__ == '__main__':
     main()

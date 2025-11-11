@@ -23,8 +23,8 @@ class CLIParser:
         self.parser.add_argument(
             '--mode',
             required=True,
-            choices=['ecb'],
-            help='Mode of operation (only ecb)'
+            choices=['ecb', 'cbc', 'cfb', 'ofb', 'ctr'],
+            help='Mode of operation'
         )
 
         # Encryption/decryption operation group
@@ -46,6 +46,10 @@ class CLIParser:
             '--output',
             help='Output file (optional)'
         )
+        self.parser.add_argument(
+            '--iv',
+            help='Initialization Vector in HEX format (for decryption only)'
+        )
 
     def parse_args(self):
         """Parse and validate arguments"""
@@ -55,6 +59,19 @@ class CLIParser:
         if not self._is_valid_hex_key(args.key):
             print(f"Error: Key must be a 32-character HEX string (16 bytes)", file=sys.stderr)
             sys.exit(1)
+
+        # IV validation (if provided)
+        if args.iv and not self._is_valid_hex_iv(args.iv):
+            print(f"Error: IV must be a 32-character HEX string (16 bytes)", file=sys.stderr)
+            sys.exit(1)
+
+        # Validate IV usage
+        if args.encrypt and args.iv:
+            print("Warning: IV is generated automatically during encryption. Provided IV will be ignored.", file=sys.stderr)
+            args.iv = None  # Ignore IV for encryption
+
+        if args.decrypt and not args.iv:
+            print("Info: No IV provided. Will read IV from input file.", file=sys.stderr)
 
         # Check input file existence
         if not os.path.exists(args.input):
@@ -71,6 +88,11 @@ class CLIParser:
         """Validate HEX key"""
         hex_pattern = re.compile(r'^[0-9a-fA-F]{32}$')
         return bool(hex_pattern.match(key))
+
+    def _is_valid_hex_iv(self, iv):
+        """Validate HEX IV"""
+        hex_pattern = re.compile(r'^[0-9a-fA-F]{32}$')
+        return bool(hex_pattern.match(iv))
 
     def _generate_default_output_filename(self, input_file, is_encrypt):
         """Generate default output filename"""
@@ -96,5 +118,6 @@ if __name__ == "__main__":
         print(f"  Key: {args.key}")
         print(f"  Input: {args.input}")
         print(f"  Output: {args.output}")
+        print(f"  IV: {args.iv}")
     except SystemExit:
         print("CLI test completed")

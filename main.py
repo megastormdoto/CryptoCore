@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
-"""
-CryptoCore - Main Entry Point
-"""
 
 import sys
 import os
-
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cryptocore', 'src'))
 
