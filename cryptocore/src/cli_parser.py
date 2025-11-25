@@ -32,11 +32,12 @@ class CLIParser:
         operation_group.add_argument('--encrypt', action='store_true', help='Perform encryption')
         operation_group.add_argument('--decrypt', action='store_true', help='Perform decryption')
 
+        # Key is now optional for encryption, required for decryption
         self.parser.add_argument(
             '--key',
-            required=True,
-            help='Key in HEX format (16 bytes for AES-128)'
+            help='Key in HEX format (16 bytes for AES-128). Optional for encryption - will be generated if omitted.'
         )
+
         self.parser.add_argument(
             '--input',
             required=True,
@@ -55,10 +56,19 @@ class CLIParser:
         """Parse and validate arguments"""
         args = self.parser.parse_args()
 
-        # Key validation
-        if not self._is_valid_hex_key(args.key):
-            print(f"Error: Key must be a 32-character HEX string (16 bytes)", file=sys.stderr)
+        # Key validation for decryption
+        if args.decrypt and not args.key:
+            print(f"Error: Key is REQUIRED for decryption operations", file=sys.stderr)
             sys.exit(1)
+
+        # Key validation if provided
+        if args.key:
+            if not self._is_valid_hex_key(args.key):
+                print(f"Error: Key must be a 32-character HEX string (16 bytes)", file=sys.stderr)
+                sys.exit(1)
+
+            # Check for weak keys and warn
+            self._warn_weak_key(args.key)
 
         # IV validation (if provided)
         if args.iv and not self._is_valid_hex_iv(args.iv):
@@ -104,6 +114,40 @@ class CLIParser:
                 return input_file[:-4] + '.dec'
             else:
                 return input_file + '.dec'
+
+    def _warn_weak_key(self, key_hex):
+        """Check for weak keys and print warning"""
+        try:
+            key_bytes = bytes.fromhex(key_hex)
+
+            # Check for all zeros
+            if all(byte == 0 for byte in key_bytes):
+                print(f"⚠️  WARNING: The provided key is all zeros (very weak!)", file=sys.stderr)
+                print(f"   For better security, use a randomly generated key.", file=sys.stderr)
+                return
+
+            # Check for sequential bytes
+            sequential_up = all(key_bytes[i] == key_bytes[i - 1] + 1 for i in range(1, len(key_bytes)))
+            sequential_down = all(key_bytes[i] == key_bytes[i - 1] - 1 for i in range(1, len(key_bytes)))
+
+            if sequential_up or sequential_down:
+                print(f"⚠️  WARNING: The provided key uses sequential bytes (weak!)", file=sys.stderr)
+                print(f"   For better security, use a randomly generated key.", file=sys.stderr)
+                return
+
+            # Check for repeated patterns
+            if len(key_bytes) >= 4:
+                # Check if key consists of repeated 2-byte pattern
+                if len(key_bytes) % 2 == 0:
+                    pattern = key_bytes[:2]
+                    repeated = all(key_bytes[i:i + 2] == pattern for i in range(2, len(key_bytes), 2))
+                    if repeated:
+                        print(f"⚠️  WARNING: The provided key uses repeated patterns (weak!)", file=sys.stderr)
+                        print(f"   For better security, use a randomly generated key.", file=sys.stderr)
+                        return
+
+        except:
+            pass  # If we can't check, don't show warning
 
 
 if __name__ == "__main__":

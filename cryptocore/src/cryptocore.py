@@ -6,6 +6,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from cli_parser import CLIParser
 from file_io import FileIO
+from csprng import generate_random_bytes, is_weak_key  # Добавляем импорт
+
 
 class CryptoCore:
     def __init__(self):
@@ -14,7 +16,19 @@ class CryptoCore:
     def run(self):
         try:
             args = self.parser.parse_args()
-            key_bytes = bytes.fromhex(args.key)
+
+            # Handle key generation for encryption without key
+            if args.encrypt and not args.key:
+                # Generate secure random key using CSPRNG module
+                key_bytes = generate_random_bytes(16)
+                key_hex = key_bytes.hex()
+                print(f"[INFO] Generated random key: {key_hex}")
+            else:
+                # Use provided key with weak key check
+                key_bytes = bytes.fromhex(args.key)
+                # Check for weak keys and warn
+                if is_weak_key(key_bytes):
+                    print(f"WARNING: The provided key may be weak!", file=sys.stderr)
 
             if len(key_bytes) != 16:
                 print("Error: Key must be 16 bytes for AES-128", file=sys.stderr)
@@ -25,7 +39,7 @@ class CryptoCore:
 
             if args.encrypt:
                 if args.mode != 'ecb':
-                    iv = os.urandom(16)
+                    iv = generate_random_bytes(16)  # Use CSPRNG for IV
             else:
                 if args.mode != 'ecb':
                     if args.iv:
@@ -70,9 +84,11 @@ class CryptoCore:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
+
 def main():
     cryptocore = CryptoCore()
     cryptocore.run()
+
 
 if __name__ == '__main__':
     main()
