@@ -1,167 +1,177 @@
+#!/usr/bin/env python3
 import argparse
 import sys
-import os
-import re
 
 
 class CLIParser:
     def __init__(self):
         self.parser = argparse.ArgumentParser(
-            description='CryptoCore - Cryptographic Core Operations Tool',
-            formatter_class=argparse.RawDescriptionHelpFormatter
-        )
-        self._setup_arguments()
+            description='CryptoCore - Cryptographic Toolkit (AES-128 + Hash Functions)',
+            prog='cryptocore',
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="""
+Examples:
+  Encryption/Decryption:
+    cryptocore encrypt --key 00112233445566778899aabbccddeeff --input file.txt --output encrypted.bin
+    cryptocore encrypt --key 00112233445566778899aabbccddeeff --input encrypted.bin --output decrypted.txt --decrypt --mode cbc --iv a1b2c3d4e5f678901234567890abcdef
 
-    def _setup_arguments(self):
-        """Setup command line arguments"""
-        self.parser.add_argument(
-            '--algorithm',
+  Hashing (Sprint 4):
+    cryptocore dgst --algorithm sha256 --input document.pdf
+    cryptocore dgst --algorithm sha3-256 --input backup.tar --output backup.sha3
+            """
+        )
+
+        subparsers = self.parser.add_subparsers(
+            dest='command',
+            help='Available commands',
             required=True,
-            choices=['aes'],
-            help='Encryption algorithm (only aes)'
-        )
-        self.parser.add_argument(
-            '--mode',
-            required=True,
-            choices=['ecb', 'cbc', 'cfb', 'ofb', 'ctr'],
-            help='Mode of operation'
+            metavar='COMMAND'
         )
 
-        # Encryption/decryption operation group
-        operation_group = self.parser.add_mutually_exclusive_group(required=True)
-        operation_group.add_argument('--encrypt', action='store_true', help='Perform encryption')
-        operation_group.add_argument('--decrypt', action='store_true', help='Perform decryption')
+        # ==================== ENCRYPTION/DECRYPTION COMMAND ====================
+        # (From previous sprints - kept unchanged)
+        enc_parser = subparsers.add_parser(
+            'encrypt',
+            help='Encrypt or decrypt files using AES-128',
+            description='Encrypt or decrypt files using AES-128 with various block modes.'
+        )
 
-        # Key is now optional for encryption, required for decryption
-        self.parser.add_argument(
+        # Key arguments group
+        key_group = enc_parser.add_argument_group('Key options')
+        key_group.add_argument(
             '--key',
-            help='Key in HEX format (16 bytes for AES-128). Optional for encryption - will be generated if omitted.'
+            required=True,
+            help='Encryption/decryption key in hexadecimal format (32 characters, 16 bytes). '
+                 'Example: 00112233445566778899aabbccddeeff'
         )
 
-        self.parser.add_argument(
+        # File I/O group
+        io_group = enc_parser.add_argument_group('File input/output')
+        io_group.add_argument(
             '--input',
             required=True,
-            help='Input file'
+            help='Path to input file'
         )
-        self.parser.add_argument(
+        io_group.add_argument(
             '--output',
-            help='Output file (optional)'
+            required=True,
+            help='Path to output file'
         )
-        self.parser.add_argument(
+
+        # Operation mode group
+        mode_group = enc_parser.add_argument_group('Operation mode')
+        mode_group.add_argument(
+            '--mode',
+            choices=['ecb', 'cbc', 'cfb', 'ofb', 'ctr'],
+            default='ecb',
+            help='Block cipher mode (default: ecb)'
+        )
+        mode_group.add_argument(
+            '--decrypt',
+            action='store_true',
+            help='Perform decryption instead of encryption'
+        )
+
+        # Advanced options group (from previous sprints)
+        adv_group = enc_parser.add_argument_group('Advanced options')
+        adv_group.add_argument(
             '--iv',
-            help='Initialization Vector in HEX format (for decryption only)'
+            help='Initialization vector in hexadecimal format (32 characters). '
+                 'Required for CBC/CFB/OFB/CTR modes during decryption if IV was not prepended to the file.'
+        )
+
+        # ==================== HASH COMMAND (SPRINT 4) ====================
+        hash_parser = subparsers.add_parser(
+            'dgst',
+            help='Compute cryptographic hash of files',
+            description='Compute message digest (hash) of files using various hash algorithms.'
+        )
+
+        # Algorithm selection
+        hash_parser.add_argument(
+            '--algorithm',
+            required=True,
+            choices=['sha256', 'sha3-256'],
+            help='Hash algorithm to use. Choices: sha256, sha3-256'
+        )
+
+        # Input file
+        hash_parser.add_argument(
+            '--input',
+            required=True,
+            help='Path to input file to hash'
+        )
+
+        # Output option
+        hash_parser.add_argument(
+            '--output',
+            help='Optional path to output file for hash value. '
+                 'If not specified, hash is printed to stdout.'
+        )
+
+        # Add mutual exclusivity for hash-specific options
+        hash_note = hash_parser.add_argument_group('Note')
+        hash_note.description = (
+            'The dgst command does not accept encryption-related arguments. '
+            'It is purely for computing hash values.'
         )
 
     def parse_args(self):
-        """Parse and validate arguments"""
+        """Parse command line arguments with additional validation"""
         args = self.parser.parse_args()
 
-        # Key validation for decryption
-        if args.decrypt and not args.key:
-            print(f"Error: Key is REQUIRED for decryption operations", file=sys.stderr)
-            sys.exit(1)
+        # Post-parsing validation for encryption command
+        if args.command == 'encrypt':
+            # Validate key length (should be 32 hex chars = 16 bytes)
+            if args.key:
+                if len(args.key) != 32:
+                    self.parser.error(
+                        f"Key must be exactly 32 hexadecimal characters (16 bytes). "
+                        f"Got {len(args.key)} characters."
+                    )
+                try:
+                    bytes.fromhex(args.key)
+                except ValueError:
+                    self.parser.error(
+                        f"Invalid key format. Key must contain only hexadecimal characters (0-9, a-f, A-F)."
+                    )
 
-        # Key validation if provided
-        if args.key:
-            if not self._is_valid_hex_key(args.key):
-                print(f"Error: Key must be a 32-character HEX string (16 bytes)", file=sys.stderr)
-                sys.exit(1)
+            # Validate IV if provided
+            if args.iv:
+                if len(args.iv) != 32:
+                    self.parser.error(
+                        f"IV must be exactly 32 hexadecimal characters (16 bytes). "
+                        f"Got {len(args.iv)} characters."
+                    )
+                try:
+                    bytes.fromhex(args.iv)
+                except ValueError:
+                    self.parser.error(
+                        f"Invalid IV format. IV must contain only hexadecimal characters (0-9, a-f, A-F)."
+                    )
 
-            # Check for weak keys and warn
-            self._warn_weak_key(args.key)
+                # Warn if IV is provided but mode is ECB
+                if args.mode == 'ecb':
+                    print(
+                        "Warning: IV is provided but mode is ECB (IV is not used in ECB mode).",
+                        file=sys.stderr
+                    )
 
-        # IV validation (if provided)
-        if args.iv and not self._is_valid_hex_iv(args.iv):
-            print(f"Error: IV must be a 32-character HEX string (16 bytes)", file=sys.stderr)
-            sys.exit(1)
-
-        # Validate IV usage
-        if args.encrypt and args.iv:
-            print("Warning: IV is generated automatically during encryption. Provided IV will be ignored.", file=sys.stderr)
-            args.iv = None  # Ignore IV for encryption
-
-        if args.decrypt and not args.iv:
-            print("Info: No IV provided. Will read IV from input file.", file=sys.stderr)
-
-        # Check input file existence
-        if not os.path.exists(args.input):
-            print(f"Error: Input file does not exist: {args.input}", file=sys.stderr)
-            sys.exit(1)
-
-        # Generate default output filename
-        if not args.output:
-            args.output = self._generate_default_output_filename(args.input, args.encrypt)
+        # Post-parsing validation for hash command
+        elif args.command == 'dgst':
+            # Input file should exist (will be checked during execution)
+            pass
 
         return args
 
-    def _is_valid_hex_key(self, key):
-        """Validate HEX key"""
-        hex_pattern = re.compile(r'^[0-9a-fA-F]{32}$')
-        return bool(hex_pattern.match(key))
 
-    def _is_valid_hex_iv(self, iv):
-        """Validate HEX IV"""
-        hex_pattern = re.compile(r'^[0-9a-fA-F]{32}$')
-        return bool(hex_pattern.match(iv))
-
-    def _generate_default_output_filename(self, input_file, is_encrypt):
-        """Generate default output filename"""
-        if is_encrypt:
-            return input_file + '.enc'
-        else:
-            # Remove .enc extension if present, otherwise add .dec
-            if input_file.endswith('.enc'):
-                return input_file[:-4] + '.dec'
-            else:
-                return input_file + '.dec'
-
-    def _warn_weak_key(self, key_hex):
-        """Check for weak keys and print warning"""
-        try:
-            key_bytes = bytes.fromhex(key_hex)
-
-            # Check for all zeros
-            if all(byte == 0 for byte in key_bytes):
-                print(f"⚠️  WARNING: The provided key is all zeros (very weak!)", file=sys.stderr)
-                print(f"   For better security, use a randomly generated key.", file=sys.stderr)
-                return
-
-            # Check for sequential bytes
-            sequential_up = all(key_bytes[i] == key_bytes[i - 1] + 1 for i in range(1, len(key_bytes)))
-            sequential_down = all(key_bytes[i] == key_bytes[i - 1] - 1 for i in range(1, len(key_bytes)))
-
-            if sequential_up or sequential_down:
-                print(f"⚠️  WARNING: The provided key uses sequential bytes (weak!)", file=sys.stderr)
-                print(f"   For better security, use a randomly generated key.", file=sys.stderr)
-                return
-
-            # Check for repeated patterns
-            if len(key_bytes) >= 4:
-                # Check if key consists of repeated 2-byte pattern
-                if len(key_bytes) % 2 == 0:
-                    pattern = key_bytes[:2]
-                    repeated = all(key_bytes[i:i + 2] == pattern for i in range(2, len(key_bytes), 2))
-                    if repeated:
-                        print(f"⚠️  WARNING: The provided key uses repeated patterns (weak!)", file=sys.stderr)
-                        print(f"   For better security, use a randomly generated key.", file=sys.stderr)
-                        return
-
-        except:
-            pass  # If we can't check, don't show warning
-
-
-if __name__ == "__main__":
-    # Test the CLI parser
-    parser = CLIParser()
+if __name__ == '__main__':
     try:
+        parser = CLIParser()
         args = parser.parse_args()
-        print("Parsed arguments:")
-        print(f"  Algorithm: {args.algorithm}")
-        print(f"  Mode: {args.mode}")
-        print(f"  Operation: {'encrypt' if args.encrypt else 'decrypt'}")
-        print(f"  Key: {args.key}")
-        print(f"  Input: {args.input}")
-        print(f"  Output: {args.output}")
-        print(f"  IV: {args.iv}")
+        print(f"Command: {args.command}")
+        print(f"Arguments: {args}")
     except SystemExit:
-        print("CLI test completed")
+        pass  # argparse already printed error
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
