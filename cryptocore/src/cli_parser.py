@@ -6,7 +6,7 @@ import sys
 class CLIParser:
     def __init__(self):
         self.parser = argparse.ArgumentParser(
-            description='CryptoCore - Cryptographic Toolkit (AES-128 + Hash Functions)',
+            description='CryptoCore - Cryptographic Toolkit (AES-128 + Hash Functions + MAC)',
             prog='cryptocore',
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
@@ -18,6 +18,10 @@ Examples:
   Hashing (Sprint 4):
     cryptocore dgst --algorithm sha256 --input document.pdf
     cryptocore dgst --algorithm sha3-256 --input backup.tar --output backup.sha3
+
+  MAC (Sprint 5 - HMAC):
+    cryptocore dgst --algorithm sha256 --hmac --key 00112233445566778899aabbccddeeff --input message.txt
+    cryptocore dgst --algorithm sha256 --hmac --key 00112233445566778899aabbccddeeff --input message.txt --verify hmac.txt
             """
         )
 
@@ -80,11 +84,11 @@ Examples:
                  'Required for CBC/CFB/OFB/CTR modes during decryption if IV was not prepended to the file.'
         )
 
-        # ==================== HASH COMMAND (SPRINT 4) ====================
+        # ==================== HASH/MAC COMMAND (SPRINT 4 + 5) ====================
         hash_parser = subparsers.add_parser(
             'dgst',
-            help='Compute cryptographic hash of files',
-            description='Compute message digest (hash) of files using various hash algorithms.'
+            help='Compute cryptographic hash or MAC of files',
+            description='Compute message digest (hash) or Message Authentication Code (MAC) of files.'
         )
 
         # Algorithm selection
@@ -105,15 +109,42 @@ Examples:
         # Output option
         hash_parser.add_argument(
             '--output',
-            help='Optional path to output file for hash value. '
-                 'If not specified, hash is printed to stdout.'
+            help='Optional path to output file for hash/MAC value. '
+                 'If not specified, result is printed to stdout.'
+        )
+
+        # ========== HMAC/CMAC OPTIONS (SPRINT 5) - ДОБАВЛЯЕМ ==========
+        mac_group = hash_parser.add_argument_group('MAC options')
+
+        mac_group.add_argument(
+            '--hmac',
+            action='store_true',
+            help='Enable HMAC mode (requires --key)'
+        )
+
+        mac_group.add_argument(
+            '--cmac',
+            action='store_true',
+            help='Enable AES-CMAC mode (bonus, requires --key)'
+        )
+
+        mac_group.add_argument(
+            '--key', '-k',
+            type=str,
+            help='Key for HMAC/CMAC as hexadecimal string'
+        )
+
+        mac_group.add_argument(
+            '--verify',
+            type=str,
+            help='File containing expected MAC value for verification'
         )
 
         # Add mutual exclusivity for hash-specific options
         hash_note = hash_parser.add_argument_group('Note')
         hash_note.description = (
-            'The dgst command does not accept encryption-related arguments. '
-            'It is purely for computing hash values.'
+            'The dgst command can compute hash values or MAC (Message Authentication Code) values. '
+            'For MAC, specify --hmac or --cmac with --key.'
         )
 
     def parse_args(self):
@@ -157,10 +188,31 @@ Examples:
                         file=sys.stderr
                     )
 
-        # Post-parsing validation for hash command
+        # Post-parsing validation for hash command (SPRINT 5 - добавляем проверки для HMAC)
         elif args.command == 'dgst':
-            # Input file should exist (will be checked during execution)
-            pass
+            # Проверка для HMAC/CMAC
+            if args.hmac or args.cmac:
+                if not args.key:
+                    self.parser.error(
+                        "Key must be provided when using --hmac or --cmac"
+                    )
+
+                # Проверяем что ключ в hex формате
+                try:
+                    key_bytes = bytes.fromhex(args.key)
+                    if len(key_bytes) == 0:
+                        self.parser.error("Key cannot be empty")
+                except ValueError:
+                    self.parser.error(
+                        "Invalid key format. Key must be a hexadecimal string."
+                    )
+
+                # Для CMAC проверяем что алгоритм SHA-256 (нужен для ключа)
+                if args.cmac and args.algorithm != 'sha256':
+                    print(
+                        "Warning: CMAC typically uses AES, but algorithm is set to hash. Continuing anyway...",
+                        file=sys.stderr
+                    )
 
         return args
 

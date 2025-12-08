@@ -162,6 +162,24 @@ class CryptoCore:
             print(f"Output file: {args.output}")
         print("-" * 50)
 
+        # ========== SPRINT 5: HMAC CHECK ==========
+        if args.hmac or args.cmac:
+            if not args.key:
+                print("Error: Key must be provided when using --hmac or --cmac", file=sys.stderr)
+                sys.exit(1)
+
+            try:
+                key_bytes = bytes.fromhex(args.key)
+            except ValueError as e:
+                print(f"Error: Invalid key format - {e}", file=sys.stderr)
+                sys.exit(1)
+
+            if args.hmac:
+                return self._handle_hmac(args, key_bytes)
+            elif args.cmac:
+                return self._handle_cmac(args, key_bytes)
+        # ========== END SPRINT 5 ==========
+
         # Import hash algorithm (Sprint 4)
         try:
             if args.algorithm == 'sha256':
@@ -226,6 +244,111 @@ class CryptoCore:
             sys.exit(1)
         except Exception as e:
             print(f"Error during hash computation: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    # ========== SPRINT 5: HMAC METHODS ==========
+    def _handle_hmac(self, args, key_bytes):
+        """Handle HMAC computation"""
+        print(f"Mode: HMAC-{args.algorithm.upper()}")
+
+        try:
+            from mac.hmac import HMAC
+
+            if args.algorithm == 'sha256':
+                from hash.sha256 import SHA256
+                hash_class = SHA256
+            elif args.algorithm == 'sha3-256':
+                from hash.sha3_256 import SHA3_256
+                hash_class = SHA3_256
+
+            hmac = HMAC(key_bytes, hash_class)
+
+            with open(args.input, 'rb') as f:
+                data = f.read()
+
+            hmac_value = hmac.compute(data)
+            hex_result = hmac_value.hex()
+
+            print(f"✓ HMAC computed successfully")
+            print(f"  File size: {len(data)} bytes")
+            print(f"  HMAC: {hex_result}")
+
+            if args.verify:
+                return self._verify_mac(hex_result, args.verify)
+
+            output_line = f"{hex_result}  {args.input}"
+
+            if args.output:
+                with open(args.output, 'w') as out_f:
+                    out_f.write(output_line + '\n')
+                print(f"✓ HMAC saved to: {args.output}")
+            else:
+                print("\n" + "=" * 50)
+                print("HMAC result:")
+                print(output_line)
+
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    def _handle_cmac(self, args, key_bytes):
+        """Handle AES-CMAC computation (bonus)"""
+        print(f"Mode: AES-CMAC")
+
+        try:
+            from mac.cmac import CMAC
+
+            cmac = CMAC(key_bytes)
+
+            with open(args.input, 'rb') as f:
+                data = f.read()
+
+            cmac_value = cmac.compute(data)
+            hex_result = cmac_value.hex() if hasattr(cmac_value, 'hex') else cmac_value
+
+            print(f"✓ CMAC computed successfully")
+            print(f"  File size: {len(data)} bytes")
+            print(f"  CMAC: {hex_result}")
+
+            if args.verify:
+                return self._verify_mac(hex_result, args.verify)
+
+            output_line = f"{hex_result}  {args.input}"
+
+            if args.output:
+                with open(args.output, 'w') as out_f:
+                    out_f.write(output_line + '\n')
+                print(f"✓ CMAC saved to: {args.output}")
+            else:
+                print("\n" + "=" * 50)
+                print("CMAC result:")
+                print(output_line)
+
+        except ImportError:
+            print("Error: AES-CMAC not implemented (bonus feature)", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error during CMAC computation: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    def _verify_mac(self, computed_mac, verify_file):
+        """Verify MAC against expected value"""
+        try:
+            with open(verify_file, 'r') as vf:
+                content = vf.read().strip()
+
+            parts = content.split()
+            expected_mac = parts[0].strip().lower()
+
+            if expected_mac == computed_mac.lower():
+                print(f"✓ [OK] MAC verification successful")
+                sys.exit(0)
+            else:
+                print(f"✗ [ERROR] MAC verification failed")
+                sys.exit(1)
+
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
 
