@@ -1,115 +1,151 @@
 # src/mac/hmac.py
-"""
-HMAC (Hash-based Message Authentication Code) implementation
-Follows RFC 2104 specification
-"""
+import hashlib
+from typing import Union, Optional
+import os
+import sys
 
 
 class HMAC:
-    """HMAC implementation using SHA-256 or SHA3-256"""
-
-    BLOCK_SIZE = 64  # bytes for SHA-256/SHA3-256
-
-    def __init__(self, key: bytes, hash_class):
+    def __init__(self, key: Union[bytes, str], hash_function='sha256'):
         """
-        Initialize HMAC with a key
-
-        Args:
-            key: The secret key as bytes
-            hash_class: Hash class (SHA256 or SHA3_256)
+        Инициализация HMAC с заданным ключом и хеш-функцией.
         """
-        self.hash_class = hash_class
-        self.key = self._process_key(key)
+        if isinstance(key, str):
+            self.key = bytes.fromhex(key)
+        else:
+            self.key = key
+
+        self.hash_function_name = hash_function
+        self.block_size = 64  # 512 бит = 64 байта
+
+        # Инициализируем хеш-функцию - ИСПРАВЛЕННЫЙ ИМПОРТ
+        if hash_function == 'sha256':
+            # Пробуем импортировать SHA256
+            try:
+                # Способ 1: Относительный импорт
+                from ..hash.sha256 import SHA256
+                self.hash = SHA256
+            except ImportError:
+                try:
+                    # Способ 2: Абсолютный импорт
+                    from hash.sha256 import SHA256
+                    self.hash = SHA256
+                except ImportError:
+                    try:
+                        # Способ 3: Импорт через sys.path
+                        import sys
+                        # Добавляем родительскую директорию в путь
+                        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                        if parent_dir not in sys.path:
+                            sys.path.insert(0, parent_dir)
+                        from hash.sha256 import SHA256
+                        self.hash = SHA256
+                    except ImportError as e:
+                        raise ImportError(f"Cannot import SHA256: {e}. Make sure hash.sha256 exists.")
+        else:
+            raise ValueError(f"Unsupported hash function: {hash_function}")
+
+        # Обработка ключа согласно RFC 2104
+        self._processed_key = self._process_key(self.key)
 
     def _process_key(self, key: bytes) -> bytes:
         """
-        Process the key according to RFC 2104:
-        - If key is longer than block size: hash it
-        - If key is shorter than block size: pad with zeros
+        Обработка ключа согласно RFC 2104:
+        1. Если ключ длиннее block_size - хешируем его
+        2. Если ключ короче block_size - дополняем нулями
         """
-        # If key is longer than block size, hash it
-        if len(key) > self.BLOCK_SIZE:
-            hasher = self.hash_class()
+        # Шаг 1: Если ключ длиннее block_size, хешируем его
+        if len(key) > self.block_size:
+            hasher = self.hash()
             hasher.update(key)
             key = hasher.digest()
 
-        # If key is shorter than block size, pad with zeros
-        if len(key) < self.BLOCK_SIZE:
-            key = key + b'\x00' * (self.BLOCK_SIZE - len(key))
+        # Шаг 2: Если ключ короче block_size, дополняем нулями
+        if len(key) < self.block_size:
+            key = key + b'\x00' * (self.block_size - len(key))
 
         return key
 
     def _xor_bytes(self, a: bytes, b: bytes) -> bytes:
-        """XOR two byte strings of equal length"""
+        """Побитовый XOR двух байтовых строк одинаковой длины."""
         return bytes(x ^ y for x, y in zip(a, b))
 
     def compute(self, message: bytes) -> bytes:
         """
-        Compute HMAC for the given message
+        Вычисление HMAC по формуле:
+        HMAC(K, m) = H((K ⊕ opad) || H((K ⊕ ipad) || m))
 
         Args:
-            message: Input message as bytes
+            message: Сообщение для аутентификации
 
         Returns:
-            HMAC value as bytes
+            HMAC в виде байтов
         """
-        # Create inner and outer pads
-        ipad = self._xor_bytes(self.key, b'\x36' * self.BLOCK_SIZE)
-        opad = self._xor_bytes(self.key, b'\x5c' * self.BLOCK_SIZE)
+        # Константы для ipad и opad
+        ipad = b'\x36' * self.block_size
+        opad = b'\x5c' * self.block_size
 
-        # Inner hash: H((K ⊕ ipad) ∥ message)
-        inner_hasher = self.hash_class()
-        inner_hasher.update(ipad)
+        # Вычисляем K ⊕ ipad и K ⊕ opad
+        key_ipad = self._xor_bytes(self._processed_key, ipad)
+        key_opad = self._xor_bytes(self._processed_key, opad)
+
+        # Внутренний хеш: H((K ⊕ ipad) || message)
+        inner_hasher = self.hash()
+        inner_hasher.update(key_ipad)
         inner_hasher.update(message)
         inner_hash = inner_hasher.digest()
 
-        # Outer hash: H((K ⊕ opad) ∥ inner_hash)
-        outer_hasher = self.hash_class()
-        outer_hasher.update(opad)
+        # Внешний хеш: H((K ⊕ opad) || inner_hash)
+        outer_hasher = self.hash()
+        outer_hasher.update(key_opad)
         outer_hasher.update(inner_hash)
 
         return outer_hasher.digest()
 
     def compute_hex(self, message: bytes) -> str:
-        """Compute HMAC and return as hexadecimal string"""
+        """Вычисление HMAC и возврат в виде hex-строки."""
         return self.compute(message).hex()
 
-    def compute_file(self, file_path: str) -> bytes:
+    def verify(self, message: bytes, hmac: Union[bytes, str]) -> bool:
         """
-        Compute HMAC for a file (processes in chunks for memory efficiency)
+        Проверка HMAC.
 
         Args:
-            file_path: Path to input file
+            message: Сообщение
+            hmac: Ожидаемый HMAC в виде байтов или hex-строки
 
         Returns:
-            HMAC value as bytes
+            True если HMAC совпадает, иначе False
         """
-        # Create inner and outer pads
-        ipad = self._xor_bytes(self.key, b'\x36' * self.BLOCK_SIZE)
-        opad = self._xor_bytes(self.key, b'\x5c' * self.BLOCK_SIZE)
+        computed = self.compute(message)
 
-        # Inner hash: H((K ⊕ ipad) ∥ message)
-        inner_hasher = self.hash_class()
-        inner_hasher.update(ipad)
+        if isinstance(hmac, str):
+            expected = bytes.fromhex(hmac)
+        else:
+            expected = hmac
 
-        # Read file in chunks (for memory efficiency with large files)
-        chunk_size = 65536  # 64KB chunks
-        with open(file_path, 'rb') as f:
-            while True:
-                chunk = f.read(chunk_size)
-                if not chunk:
-                    break
-                inner_hasher.update(chunk)
+        # Сравнение с постоянным временем для предотвращения timing attacks
+        return self._constant_time_compare(computed, expected)
 
-        inner_hash = inner_hasher.digest()
+    def _constant_time_compare(self, a: bytes, b: bytes) -> bool:
+        """Сравнение байтовых строк с постоянным временем."""
+        if len(a) != len(b):
+            return False
 
-        # Outer hash: H((K ⊕ opad) ∥ inner_hash)
-        outer_hasher = self.hash_class()
-        outer_hasher.update(opad)
-        outer_hasher.update(inner_hash)
+        result = 0
+        for x, y in zip(a, b):
+            result |= x ^ y
+        return result == 0
 
-        return outer_hasher.digest()
 
-    def compute_file_hex(self, file_path: str) -> str:
-        """Compute HMAC for a file and return as hexadecimal string"""
-        return self.compute_file(file_path).hex()
+# Функция для удобства использования
+def hmac_sha256(key: Union[bytes, str], message: bytes) -> bytes:
+    """Удобная функция для быстрого вычисления HMAC-SHA256."""
+    hmac = HMAC(key, 'sha256')
+    return hmac.compute(message)
+
+
+def hmac_sha256_hex(key: Union[bytes, str], message: bytes) -> str:
+    """Удобная функция для быстрого вычисления HMAC-SHA256 в hex."""
+    hmac = HMAC(key, 'sha256')
+    return hmac.compute_hex(message)

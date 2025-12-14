@@ -19,9 +19,13 @@ Examples:
     cryptocore dgst --algorithm sha256 --input document.pdf
     cryptocore dgst --algorithm sha3-256 --input backup.tar --output backup.sha3
 
-  MAC (Sprint 5 - HMAC):
+  HMAC (Sprint 5):
+    # Generate HMAC
     cryptocore dgst --algorithm sha256 --hmac --key 00112233445566778899aabbccddeeff --input message.txt
-    cryptocore dgst --algorithm sha256 --hmac --key 00112233445566778899aabbccddeeff --input message.txt --verify hmac.txt
+    # Verify HMAC
+    cryptocore dgst --algorithm sha256 --hmac --key 00112233445566778899aabbccddeeff --input message.txt --verify expected_hmac.txt
+    # Generate and save to file
+    cryptocore dgst --algorithm sha256 --hmac --key 00112233445566778899aabbccddeeff --input message.txt --output hmac.txt
             """
         )
 
@@ -33,7 +37,6 @@ Examples:
         )
 
         # ==================== ENCRYPTION/DECRYPTION COMMAND ====================
-        # (From previous sprints - kept unchanged)
         enc_parser = subparsers.add_parser(
             'encrypt',
             help='Encrypt or decrypt files using AES-128',
@@ -76,7 +79,7 @@ Examples:
             help='Perform decryption instead of encryption'
         )
 
-        # Advanced options group (from previous sprints)
+        # Advanced options group
         adv_group = enc_parser.add_argument_group('Advanced options')
         adv_group.add_argument(
             '--iv',
@@ -113,38 +116,43 @@ Examples:
                  'If not specified, result is printed to stdout.'
         )
 
-        # ========== HMAC/CMAC OPTIONS (SPRINT 5) - ДОБАВЛЯЕМ ==========
+        # ========== HMAC OPTIONS (SPRINT 5) ==========
         mac_group = hash_parser.add_argument_group('MAC options')
 
+        # ВАЖНО: Сначала добавляем флаг --hmac
         mac_group.add_argument(
             '--hmac',
             action='store_true',
             help='Enable HMAC mode (requires --key)'
         )
 
+        # Затем добавляем ключ
         mac_group.add_argument(
-            '--cmac',
-            action='store_true',
-            help='Enable AES-CMAC mode (bonus, requires --key)'
-        )
-
-        mac_group.add_argument(
-            '--key', '-k',
+            '--key',
             type=str,
-            help='Key for HMAC/CMAC as hexadecimal string'
+            help='Key for HMAC as hexadecimal string. REQUIRED when using --hmac'
         )
 
+        # Флаг для верификации
         mac_group.add_argument(
             '--verify',
             type=str,
-            help='File containing expected MAC value for verification'
+            help='File containing expected HMAC value for verification. '
+                 'Format: HMAC_VALUE FILENAME'
         )
 
-        # Add mutual exclusivity for hash-specific options
+        # Бонус: CMAC (опционально)
+        mac_group.add_argument(
+            '--cmac',
+            action='store_true',
+            help='[BONUS] Enable AES-CMAC mode (requires --key)'
+        )
+
+        # Добавляем примечание
         hash_note = hash_parser.add_argument_group('Note')
         hash_note.description = (
-            'The dgst command can compute hash values or MAC (Message Authentication Code) values. '
-            'For MAC, specify --hmac or --cmac with --key.'
+            'For HMAC: specify --hmac with --key.\n'
+            'For verification: use --verify with a file containing expected HMAC value.'
         )
 
     def parse_args(self):
@@ -188,31 +196,76 @@ Examples:
                         file=sys.stderr
                     )
 
-        # Post-parsing validation for hash command (SPRINT 5 - добавляем проверки для HMAC)
+        # Post-parsing validation for hash command
         elif args.command == 'dgst':
-            # Проверка для HMAC/CMAC
-            if args.hmac or args.cmac:
+            # ВАЖНОЕ ИСПРАВЛЕНИЕ: Проверяем HMAC отдельно
+            if args.hmac:
+                # CLI-2: Ключ обязателен для HMAC
                 if not args.key:
                     self.parser.error(
-                        "Key must be provided when using --hmac or --cmac"
+                        "Error: --key is REQUIRED when using --hmac"
                     )
 
-                # Проверяем что ключ в hex формате
+                # Проверяем формат ключа
                 try:
                     key_bytes = bytes.fromhex(args.key)
+                    # Ключ может быть любой длины (HMAC поддерживает ключи переменной длины)
                     if len(key_bytes) == 0:
                         self.parser.error("Key cannot be empty")
                 except ValueError:
                     self.parser.error(
-                        "Invalid key format. Key must be a hexadecimal string."
+                        "Invalid key format. Key must be a hexadecimal string (e.g., 00112233445566778899aabbccddeeff)."
                     )
 
-                # Для CMAC проверяем что алгоритм SHA-256 (нужен для ключа)
-                if args.cmac and args.algorithm != 'sha256':
+                # Проверяем что алгоритм поддерживается для HMAC
+                if args.algorithm not in ['sha256']:  # Пока только SHA-256 для HMAC
                     print(
-                        "Warning: CMAC typically uses AES, but algorithm is set to hash. Continuing anyway...",
+                        f"Warning: HMAC with {args.algorithm} may not be fully tested. Using anyway...",
                         file=sys.stderr
                     )
+
+            # Проверяем CMAC (опционально)
+            if args.cmac:
+                if not args.key:
+                    self.parser.error(
+                        "Error: --key is REQUIRED when using --cmac"
+                    )
+
+                try:
+                    key_bytes = bytes.fromhex(args.key)
+                    if len(key_bytes) != 16:
+                        self.parser.error(
+                            f"AES-CMAC requires 16-byte key (32 hex chars). Got {len(key_bytes)} bytes."
+                        )
+                except ValueError:
+                    self.parser.error(
+                        "Invalid key format for CMAC. Key must be a hexadecimal string."
+                    )
+
+            # Проверяем конфликт флагов
+            if args.hmac and args.cmac:
+                self.parser.error(
+                    "Error: Cannot use both --hmac and --cmac simultaneously. Choose one."
+                )
+
+            # Если указан --verify, должен быть указан и ключ (для HMAC/CMAC)
+            if args.verify:
+                if not args.key:
+                    self.parser.error(
+                        "Error: --key is REQUIRED when using --verify"
+                    )
+                if not (args.hmac or args.cmac):
+                    self.parser.error(
+                        "Error: --verify can only be used with --hmac or --cmac"
+                    )
+
+            # Если указан ключ, но не указан --hmac или --cmac - предупреждение
+            if args.key and not (args.hmac or args.cmac):
+                print(
+                    "Warning: Key provided but neither --hmac nor --cmac specified. "
+                    "Key will be ignored for regular hash computation.",
+                    file=sys.stderr
+                )
 
         return args
 
