@@ -1,30 +1,43 @@
-from abc import ABC, abstractmethod
+"""
+Block cipher modes of operation.
+Sprint 6 focuses on GCM mode.
+"""
 
+# Импортируем только то, что нужно для Sprint 6
+from .gcm import GCM, AuthenticationError
 
-class BaseMode(ABC):
-    def __init__(self, key):
-        self.key = key
-        self.block_size = 16
-
-    @abstractmethod
-    def encrypt(self, plaintext, iv=None):
+# Определяем другие режимы как заглушки если они нужны
+try:
+    from .ecb import ECB
+except ImportError:
+    class ECB:
         pass
 
-    @abstractmethod
-    def decrypt(self, ciphertext, iv=None):
+try:
+    from .cbc import CBC
+except ImportError:
+    class CBC:
         pass
 
-    def _pkcs7_pad(self, data):
-        padding_length = self.block_size - (len(data) % self.block_size)
-        padding = bytes([padding_length] * padding_length)
-        return data + padding
+try:
+    from .cfb import CFB
+except ImportError:
+    class CFB:
+        pass
 
-    def _pkcs7_unpad(self, data):
-        if len(data) == 0:
-            return data
-        padding_length = data[-1]
-        if padding_length < 1 or padding_length > self.block_size:
-            raise ValueError("Invalid padding")
-        if data[-padding_length:] != bytes([padding_length] * padding_length):
-            raise ValueError("Invalid padding")
-        return data[:-padding_length]
+try:
+    from .ofb import OFB
+except ImportError:
+    class OFB:
+        pass
+
+try:
+    from .ctr import CTR
+except ImportError:
+    class CTR:
+        pass
+
+__all__ = [
+    'ECB', 'CBC', 'CFB', 'OFB', 'CTR',
+    'GCM', 'AuthenticationError'
+]
