@@ -2,6 +2,32 @@
 import sys
 import os
 
+# FIX FOR WINDOWS UNICODE AND ENCODING ISSUES
+if sys.platform == "win32":
+    try:
+        import io
+        # Force UTF-8 encoding for Windows console
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'buffer'):
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except:
+        pass
+
+# Helper function for platform-specific symbols
+def get_symbol(symbol_name):
+    """Get platform-appropriate symbols"""
+    symbols = {
+        'check': '✓' if sys.platform != "win32" else "[OK]",
+        'cross': '✗' if sys.platform != "win32" else "[ERROR]",
+        'lock': '🔒' if sys.platform != "win32" else "[LOCK]",
+        'unlock': '🔓' if sys.platform != "win32" else "[UNLOCK]",
+        'warning': '⚠️' if sys.platform != "win32" else "[WARNING]",
+        'key': '🔑' if sys.platform != "win32" else "[KEY]",
+        'file': '📁' if sys.platform != "win32" else "[FILE]",
+    }
+    return symbols.get(symbol_name, "")
+
 # Add src directory to path for imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(current_dir, 'src')
@@ -37,11 +63,19 @@ class CryptoCore:
             sys.exit(1)
 
     def _handle_crypto(self, args):
-        """Handle encryption/decryption operations (Sprints 1-3)"""
+        """Handle encryption/decryption operations (Sprints 1-6 with GCM support)"""
         print(f"CryptoCore - {'Decryption' if args.decrypt else 'Encryption'} Mode")
         print(f"Algorithm: AES-128, Mode: {args.mode.upper()}")
         print(f"Input file: {args.input}")
         print(f"Output file: {args.output}")
+
+        if args.mode == 'gcm' and hasattr(args, 'aad'):
+            # Display AAD
+            if args.aad:
+                print(f"AAD: {args.aad.hex()}")
+            else:
+                print(f"AAD: None")
+
         print("-" * 50)
 
         # Convert key from hex to bytes
@@ -52,17 +86,30 @@ class CryptoCore:
             sys.exit(1)
 
         # Validate key length
-        if len(key_bytes) != 16:
-            print(f"Error: Key must be 16 bytes (got {len(key_bytes)} bytes)", file=sys.stderr)
-            sys.exit(1)
+        if args.mode == 'gcm':
+            # GCM supports 16, 24, or 32 byte keys
+            if len(key_bytes) not in [16, 24, 32]:
+                print(f"Error: GCM key must be 16, 24, or 32 bytes (got {len(key_bytes)} bytes)",
+                      file=sys.stderr)
+                sys.exit(1)
+        else:
+            # Other modes: only 16 bytes for AES-128
+            if len(key_bytes) != 16:
+                print(f"Error: Key must be 16 bytes (got {len(key_bytes)} bytes)", file=sys.stderr)
+                sys.exit(1)
 
         # Check for weak keys
         if is_weak_key(key_bytes):
-            print("WARNING: The provided key may be weak! Consider using a different key.", file=sys.stderr)
+            print("WARNING: The provided key may be weak! Consider using a different key.",
+                  file=sys.stderr)
 
+        # Read input file
         # Read input file
         try:
             input_data = FileIO.read_file(args.input)
+            print(f"[DEBUG] Read {len(input_data)} bytes from {args.input}")
+            print(f"[DEBUG] First 12 bytes: {input_data[:12].hex()}")
+            print(f"[DEBUG] Last 16 bytes: {input_data[-16:].hex()}")
         except Exception as e:
             print(f"Error reading input file: {e}", file=sys.stderr)
             sys.exit(1)
@@ -70,7 +117,7 @@ class CryptoCore:
         if not input_data:
             print("Warning: Input file is empty", file=sys.stderr)
 
-        # Handle IV based on mode and operation
+        # Handle IV/nonce based on mode and operation
         iv = None
         if args.mode != 'ecb':
             if args.decrypt:
@@ -82,37 +129,71 @@ class CryptoCore:
                     except ValueError as e:
                         print(f"Error: Invalid IV format - {e}", file=sys.stderr)
                         sys.exit(1)
-                    print(f"Using provided IV: {args.iv}")
+                    print(f"Using provided IV/nonce: {args.iv}")
                 else:
-                    # Extract IV from beginning of file
-                    if len(input_data) < 16:
-                        print("Error: Input file too short to contain IV", file=sys.stderr)
+                    # Для GCM: extract 12-byte nonce from file
+                    # Для других режимов: extract 16-byte IV from file
+                    if args.mode == 'gcm':
+                        iv_size = 12  # 12-byte nonce for GCM
+                    else:
+                        iv_size = 16  # 16-byte IV for other modes
+
+                    if len(input_data) < iv_size:
+                        print(f"Error: Input file too short to contain IV/nonce", file=sys.stderr)
                         sys.exit(1)
-                    iv = input_data[:16]
-                    input_data = input_data[16:]
-                    print(f"Extracted IV from file: {iv.hex()}")
+
+                    iv = input_data[:iv_size]
+
+                    # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ:
+                    if args.mode == 'gcm':
+                        # Для GCM: оставляем данные как есть (nonce уже в них)
+                        # iv используется только для отображения информации
+                        pass
+                    else:
+                        # Для других режимов: удаляем IV из данных
+                        input_data = input_data[iv_size:]
+
+                    print(f"Extracted IV/nonce from file: {iv.hex()}")
             else:
-                # For encryption, generate random IV
-                iv = generate_random_bytes(16)
-                print(f"Generated random IV: {iv.hex()}")
+                # For encryption, generate random IV/nonce
+                if args.mode == 'gcm':
+                    iv = generate_random_bytes(12)  # 12-byte nonce for GCM
+                else:
+                    iv = generate_random_bytes(16)  # 16-byte IV for other modes
+                print(f"Generated random IV/nonce: {iv.hex()}")
 
         # Import and initialize the appropriate mode
         try:
-            if args.mode == 'ecb':
+            if args.mode == 'gcm':
+                from modes.gcm import GCM
+
+                # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ:
+                # При дешифровании iv уже извлечен из файла
+                # При шифровании iv сгенерирован случайно
+                # ВСЕГДА передаем iv в конструктор GCM!
+                mode_instance = GCM(key_bytes, iv)
+
+                aad = args.aad if hasattr(args, 'aad') and args.aad else b""
+            elif args.mode == 'ecb':
                 from modes.ecb import ECBMode
                 mode_instance = ECBMode(key_bytes)
+                aad = b""
             elif args.mode == 'cbc':
                 from modes.cbc import CBCMode
                 mode_instance = CBCMode(key_bytes)
+                aad = b""
             elif args.mode == 'cfb':
                 from modes.cfb import CFBMode
                 mode_instance = CFBMode(key_bytes)
+                aad = b""
             elif args.mode == 'ofb':
                 from modes.ofb import OFBMode
                 mode_instance = OFBMode(key_bytes)
+                aad = b""
             elif args.mode == 'ctr':
                 from modes.ctr import CTRMode
                 mode_instance = CTRMode(key_bytes)
+                aad = b""
             else:
                 raise ValueError(f"Unsupported mode: {args.mode}")
         except ImportError as e:
@@ -123,20 +204,26 @@ class CryptoCore:
         try:
             if args.decrypt:
                 print("Performing decryption...")
-                output_data = mode_instance.decrypt(input_data, iv)
+                if args.mode == 'gcm':
+                    output_data = mode_instance.decrypt(input_data, aad)
+                else:
+                    output_data = mode_instance.decrypt(input_data, iv)
                 operation = "decrypted"
             else:
                 print("Performing encryption...")
-                output_data = mode_instance.encrypt(input_data, iv)
-                # For encryption in modes other than ECB, prepend IV to output
-                if args.mode != 'ecb' and iv is not None:
-                    output_data = iv + output_data
+                if args.mode == 'gcm':
+                    output_data = mode_instance.encrypt(input_data, aad)
+                else:
+                    output_data = mode_instance.encrypt(input_data, iv)
+                    # For encryption in modes other than ECB, prepend IV to output
+                    if args.mode != 'ecb' and iv is not None:
+                        output_data = iv + output_data
                 operation = "encrypted"
 
             # Write output file
             FileIO.write_file(args.output, output_data)
 
-            print(f"✓ File successfully {operation}")
+            print(f"{get_symbol('check')} File successfully {operation}")
             print(f"  Input size: {len(input_data)} bytes")
             print(f"  Output size: {len(output_data)} bytes")
 
@@ -145,13 +232,39 @@ class CryptoCore:
                 print("\n" + "=" * 50)
                 print("IMPORTANT: Save your key for decryption!")
                 print(f"Key: {args.key}")
-                if iv:
-                    print(f"IV: {iv.hex()}" if args.mode != 'ecb' else "")
+
+                if args.mode == 'gcm':
+                    # Для GCM: читаем nonce из созданного файла
+                    try:
+                        with open(args.output, 'rb') as f:
+                            nonce_from_file = f.read(12)
+                            print(f"Nonce (included in file): {nonce_from_file.hex()}")
+                    except:
+                        if iv:
+                            print(f"Nonce: {iv.hex()}")
+                elif iv:
+                    print(f"IV/Nonce: {iv.hex()}")
+                if args.mode == 'gcm' and hasattr(args, 'aad') and args.aad:
+                    print(f"AAD: {args.aad.hex()}")
                 print("=" * 50)
 
         except Exception as e:
-            print(f"Error during {'decryption' if args.decrypt else 'encryption'}: {e}", file=sys.stderr)
-            sys.exit(1)
+            error_type = type(e).__name__
+            error_msg = str(e)
+
+            if error_type == 'AuthenticationError' or 'authentication' in error_msg.lower():
+                print(f"{get_symbol('cross')} Authentication failed: {error_msg}", file=sys.stderr)
+                # Delete output file if it was created
+                if os.path.exists(args.output):
+                    try:
+                        os.remove(args.output)
+                    except:
+                        pass
+                sys.exit(1)
+            else:
+                print(f"Error during {'decryption' if args.decrypt else 'encryption'}: {error_msg}",
+                      file=sys.stderr)
+                sys.exit(1)
 
     def _handle_hash(self, args):
         """Handle hash computation operations (Sprint 4)"""
@@ -215,7 +328,7 @@ class CryptoCore:
             # Get final hash
             hash_value = hasher.hexdigest()
 
-            print(f"✓ Hash computed successfully")
+            print(f"{get_symbol('check')} Hash computed successfully")
             print(f"  File size: {total_bytes} bytes")
             print(f"  Hash ({args.algorithm}): {hash_value}")
 
@@ -225,9 +338,9 @@ class CryptoCore:
             # Write output to file or stdout
             if args.output:
                 try:
-                    with open(args.output, 'w') as out_f:
+                    with open(args.output, 'w', encoding='utf-8') as out_f:
                         out_f.write(output_line + '\n')
-                    print(f"✓ Hash saved to: {args.output}")
+                    print(f"{get_symbol('check')} Hash saved to: {args.output}")
                 except Exception as e:
                     print(f"Error writing output file: {e}", file=sys.stderr)
                     sys.exit(1)
@@ -254,18 +367,6 @@ class CryptoCore:
         try:
             from mac.hmac import HMAC
 
-            # ВАЖНОЕ ИСПРАВЛЕНИЕ: HMAC ожидает строку 'sha256', а не класс SHA256
-            # ЗАМЕНИТЕ ЭТУ СТРОКУ (строки 300-307 в оригинальном файле):
-            # if args.algorithm == 'sha256':
-            #     from hash.sha256 import SHA256
-            #     hash_class = SHA256
-            # elif args.algorithm == 'sha3-256':
-            #     from hash.sha3_256 import SHA3_256
-            #     hash_class = SHA3_256
-            #
-            # hmac = HMAC(key_bytes, hash_class)
-            #
-            # НА ЭТО:
             hmac = HMAC(key_bytes, 'sha256')
 
             with open(args.input, 'rb') as f:
@@ -274,7 +375,7 @@ class CryptoCore:
             # Используем compute_hex вместо compute
             hmac_value_hex = hmac.compute_hex(data)
 
-            print(f"✓ HMAC computed successfully")
+            print(f"{get_symbol('check')} HMAC computed successfully")
             print(f"  File size: {len(data)} bytes")
             print(f"  HMAC: {hmac_value_hex}")
 
@@ -286,9 +387,9 @@ class CryptoCore:
             output_line = f"{hmac_value_hex} {args.input}"
 
             if args.output:
-                with open(args.output, 'w') as out_f:
+                with open(args.output, 'w', encoding='utf-8') as out_f:
                     out_f.write(output_line + '\n')
-                print(f"✓ HMAC saved to: {args.output}")
+                print(f"{get_symbol('check')} HMAC saved to: {args.output}")
             else:
                 print("\n" + "=" * 50)
                 print("HMAC result:")
@@ -313,7 +414,7 @@ class CryptoCore:
             cmac_value = cmac.compute(data)
             hex_result = cmac_value.hex() if hasattr(cmac_value, 'hex') else cmac_value
 
-            print(f"✓ CMAC computed successfully")
+            print(f"{get_symbol('check')} CMAC computed successfully")
             print(f"  File size: {len(data)} bytes")
             print(f"  CMAC: {hex_result}")
 
@@ -324,9 +425,9 @@ class CryptoCore:
             output_line = f"{hex_result} {args.input}"
 
             if args.output:
-                with open(args.output, 'w') as out_f:
+                with open(args.output, 'w', encoding='utf-8') as out_f:
                     out_f.write(output_line + '\n')
-                print(f"✓ CMAC saved to: {args.output}")
+                print(f"{get_symbol('check')} CMAC saved to: {args.output}")
             else:
                 print("\n" + "=" * 50)
                 print("CMAC result:")
@@ -344,7 +445,7 @@ class CryptoCore:
         try:
             print(f"Verifying MAC against {verify_file}...")
 
-            with open(verify_file, 'r') as vf:
+            with open(verify_file, 'r', encoding='utf-8') as vf:
                 content = vf.read().strip()
 
             # Парсим строку формата: HMAC_VALUE INPUT_FILE_PATH
@@ -367,12 +468,12 @@ class CryptoCore:
 
             # Сравниваем HMAC
             if expected_mac == computed_mac_lower:
-                print(f"✓ [OK] MAC verification successful")
+                print(f"{get_symbol('check')} [OK] MAC verification successful")
                 print(f"  Expected: {expected_mac}")
                 print(f"  Computed: {computed_mac_lower}")
                 sys.exit(0)
             else:
-                print(f"✗ [ERROR] MAC verification failed")
+                print(f"{get_symbol('cross')} [ERROR] MAC verification failed")
                 print(f"  Expected: {expected_mac}")
                 print(f"  Computed: {computed_mac_lower}")
                 sys.exit(1)

@@ -1,9 +1,7 @@
+# src/aead/encrypt_then_mac.py
 import os
-import hmac
-from cryptography.hazmat.primitives.hashes import SHA256
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from src.core.ciphers import AES
-from src.modes.ctr import CTR
+import struct
+from typing import Union
 
 
 class AuthenticationError(Exception):
@@ -27,21 +25,24 @@ class EncryptThenMAC:
             # For AES-128, we need 32 bytes (16 for encryption, 16 for MAC)
             raise ValueError("Key must be at least 32 bytes for Encrypt-then-MAC")
 
-        # Derive separate keys using HKDF
-        hkdf = HKDF(
-            algorithm=SHA256(),
-            length=32,
-            salt=None,
-            info=b'encrypt_then_mac_key_separation'
-        )
-        derived_key = hkdf.derive(key)
+        # Простой KDF для разделения ключей (без HKDF)
+        # Используем HMAC для производных ключей
+        from src.mac.hmac import HMAC
+        hmac_obj = HMAC(key, 'sha256')
 
-        self.enc_key = derived_key[:16]
-        self.mac_key = derived_key[16:]
+        # Генерируем производные ключи
+        enc_key_data = b"encryption_key_derivation" + struct.pack('>I', 1)
+        mac_key_data = b"mac_key_derivation" + struct.pack('>I', 1)
+
+        self.enc_key = hmac_obj.compute(enc_key_data)[:16]
+        self.mac_key = hmac_obj.compute(mac_key_data)[:16]
 
         # Initialize encryption mode
         mode_args = mode_args or {}
         self.cipher = mode_class(self.enc_key, **mode_args)
+
+        # Initialize HMAC
+        self.hmac = HMAC(self.mac_key, 'sha256')
 
     def encrypt(self, plaintext: bytes, aad: bytes = b"") -> bytes:
         """Encrypt then MAC."""
@@ -50,7 +51,7 @@ class EncryptThenMAC:
 
         # Compute MAC over ciphertext || AAD
         mac_data = ciphertext + aad
-        tag = hmac.new(self.mac_key, mac_data, 'sha256').digest()[:16]
+        tag = self.hmac.compute(mac_data)[:16]  # 16 bytes for AES
 
         return ciphertext + tag
 
@@ -64,9 +65,9 @@ class EncryptThenMAC:
 
         # Verify MAC
         mac_data = ciphertext + aad
-        expected_tag = hmac.new(self.mac_key, mac_data, 'sha256').digest()[:16]
+        expected_tag = self.hmac.compute(mac_data)[:16]
 
-        if not hmac.compare_digest(received_tag, expected_tag):
+        if not self.hmac.verify(mac_data, received_tag):
             raise AuthenticationError("Authentication failed: MAC mismatch")
 
         # Decrypt

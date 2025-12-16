@@ -12,8 +12,10 @@ class CLIParser:
             epilog="""\n
 Examples:
   Encryption/Decryption:
-    # GCM Encryption with AAD
+    # GCM Encryption with hex AAD
     cryptocore encrypt --key 00112233445566778899aabbccddeeff --input plaintext.txt --output encrypted.bin --mode gcm --aad aabbccddeeff
+    # GCM Encryption with text AAD
+    cryptocore encrypt --key 00112233445566778899aabbccddeeff --input plaintext.txt --output encrypted.bin --mode gcm --aad "MyAuthData"
     # GCM Decryption with AAD
     cryptocore encrypt --decrypt --key 00112233445566778899aabbccddeeff --input encrypted.bin --output decrypted.txt --mode gcm --aad aabbccddeeff
     # Traditional modes
@@ -96,7 +98,8 @@ Examples:
             '--aad',
             type=str,
             default='',
-            help='Additional Authenticated Data (AAD) for GCM mode as hexadecimal string. '
+            help='Additional Authenticated Data (AAD) for GCM mode. '
+                 'Can be hex string (e.g., "aabbccdd") or text string (e.g., "MyAuthData"). '
                  'Optional, treated as empty if not provided.'
         )
 
@@ -218,16 +221,19 @@ Examples:
                         file=sys.stderr
                     )
 
-            # Validate AAD for GCM
-            if args.aad:
-                try:
-                    args.aad = bytes.fromhex(args.aad)
-                except ValueError:
-                    self.parser.error(
-                        "AAD must be a valid hexadecimal string."
-                    )
+            # Validate AAD for GCM - FIXED: Support both hex and text AAD
+            if hasattr(args, 'aad'):
+                if args.aad == '':
+                    args.aad = b""  # Empty bytes
+                else:
+                    try:
+                        # First try to parse as hex
+                        args.aad = bytes.fromhex(args.aad)
+                    except ValueError:
+                        # If not valid hex, treat as text string
+                        args.aad = args.aad.encode('utf-8')
             else:
-                args.aad = b""
+                args.aad = b""  # Empty bytes
 
         elif args.command == 'dgst':
             # HMAC validation
