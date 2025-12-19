@@ -6,6 +6,7 @@ import sys
 import os
 import tempfile
 from pathlib import Path
+from getpass import getpass
 
 # Критически важно: добавляем правильные пути для импорта
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -17,10 +18,6 @@ sys.path.insert(0, project_root)  # project root
 
 # Также добавляем возможные пути
 sys.path.insert(0, os.path.join(current_dir, '..'))
-
-print(f"DEBUG: Current dir: {current_dir}", file=sys.stderr)
-print(f"DEBUG: Project root: {project_root}", file=sys.stderr)
-print(f"DEBUG: sys.path: {sys.path[:3]}...", file=sys.stderr)
 
 try:
     # Пробуем импортировать из текущей директории (src)
@@ -35,12 +32,11 @@ try:
     from modes.ctr import CTR
     from modes.gcm import GCM, AuthenticationError
     from aead.encrypt_then_mac import EncryptThenMAC
-
-    print("DEBUG: Imported from local modules", file=sys.stderr)
+    # KDF imports
+    from kdf.pbkdf2 import pbkdf2_hmac_sha256
+    from kdf.hkdf import derive_key
 
 except ImportError as e:
-    print(f"DEBUG: Local import failed: {e}", file=sys.stderr)
-
     # Если не сработало, пробуем импортировать как модуль src
     try:
         from src.cli.parser import CLIParser
@@ -54,13 +50,12 @@ except ImportError as e:
         from src.modes.ctr import CTR
         from src.modes.gcm import GCM, AuthenticationError
         from src.aead.encrypt_then_mac import EncryptThenMAC
-
-        print("DEBUG: Imported from src.* modules", file=sys.stderr)
+        # KDF imports
+        from src.kdf.pbkdf2 import pbkdf2_hmac_sha256
+        from src.kdf.hkdf import derive_key
 
     except ImportError as e2:
         print(f"FATAL: Could not import modules: {e2}", file=sys.stderr)
-        print(f"Current working directory: {os.getcwd()}", file=sys.stderr)
-        print(f"Files in current directory: {os.listdir('.')}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -76,6 +71,8 @@ class CryptoCore:
             self.handle_encryption(args)
         elif args.command == 'dgst':
             self.handle_digest(args)
+        elif args.command == 'derive':
+            self.handle_derive(args)
         else:
             print(f"Unknown command: {args.command}", file=sys.stderr)
             sys.exit(1)
@@ -348,6 +345,121 @@ class CryptoCore:
 
         except Exception as e:
             print(f"[ERROR] {str(e)}", file=sys.stderr)
+            sys.exit(1)
+
+    def handle_derive(self, args):
+        """Handle key derivation commands"""
+        try:
+            # Get password or master key
+            password = None
+            master_key = None
+
+            if args.master_key:
+                # Key hierarchy mode
+                master_key = bytes.fromhex(args.master_key)
+
+                if not args.context:
+                    print("[ERROR] Context string required for key hierarchy derivation",
+                          file=sys.stderr)
+                    sys.exit(1)
+
+                # Perform key hierarchy derivation
+                derived_key = derive_key(
+                    master_key,
+                    args.context,
+                    args.length
+                )
+                salt_hex = ''
+
+            else:
+                # Password-based mode
+                if args.password:
+                    password = args.password
+                elif args.password_file:
+                    try:
+                        with open(args.password_file, 'r', encoding='utf-8') as f:
+                            password = f.read().strip()
+                    except IOError as e:
+                        print(f"[ERROR] Reading password file: {e}", file=sys.stderr)
+                        sys.exit(1)
+                elif args.password_env:
+                    password = os.environ.get(args.password_env)
+                    if not password:
+                        print(f"[ERROR] Environment variable {args.password_env} not set",
+                              file=sys.stderr)
+                        sys.exit(1)
+                else:
+                    # Prompt for password
+                    password = getpass("Enter password: ")
+
+                # Get or generate salt
+                salt = None
+                if args.salt:
+                    try:
+                        salt = bytes.fromhex(args.salt)
+                    except ValueError:
+                        # If not valid hex, treat as text
+                        salt = args.salt.encode('utf-8')
+                elif args.salt_file:
+                    try:
+                        with open(args.salt_file, 'rb') as f:
+                            salt = f.read()
+                    except IOError as e:
+                        print(f"[ERROR] Reading salt file: {e}", file=sys.stderr)
+                        sys.exit(1)
+                else:
+                    # Generate random salt
+                    import secrets
+                    salt = secrets.token_bytes(16)
+                    salt_hex = salt.hex()
+
+                # Perform PBKDF2 derivation
+                print(f"[INFO] Deriving key with {args.iterations} iterations...")
+                derived_key = pbkdf2_hmac_sha256(
+                    password,
+                    salt,
+                    args.iterations,
+                    args.length
+                )
+
+                # Clear password from memory
+                if isinstance(password, str):
+                    # Overwrite with random data
+                    password = ' ' * len(password)
+                password = None
+
+            # Output results according to specification
+            if args.output:
+                # Write binary key to file
+                try:
+                    with open(args.output, 'wb') as f:
+                        f.write(derived_key)
+                    print(f"[SUCCESS] Key written to {args.output}")
+                except IOError as e:
+                    print(f"[ERROR] Writing key file: {e}", file=sys.stderr)
+                    sys.exit(1)
+
+            # Always print to stdout in format: KEY_HEX SALT_HEX
+            if master_key:
+                # For key hierarchy, salt is empty
+                print(f"{derived_key.hex()} ")
+            else:
+                # For PBKDF2, include salt
+                salt_output = salt_hex if 'salt_hex' in locals() else args.salt or ''
+                print(f"{derived_key.hex()} {salt_output}")
+
+            # Write generated salt to file if specified
+            if 'salt_hex' in locals() and salt_hex and args.output_salt:
+                try:
+                    with open(args.output_salt, 'w') as f:
+                        f.write(salt_hex)
+                    print(f"[INFO] Salt written to {args.output_salt}")
+                except IOError as e:
+                    print(f"[ERROR] Writing salt file: {e}", file=sys.stderr)
+                    sys.exit(1)
+
+        except Exception as e:
+            print(f"[ERROR] Key derivation failed: {str(e)}", file=sys.stderr)
             sys.exit(1)
 
 
