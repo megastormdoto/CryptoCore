@@ -21,42 +21,31 @@ sys.path.insert(0, os.path.join(current_dir, '..'))
 
 try:
     # Пробуем импортировать из текущей директории (src)
-    from cli.parser import CLIParser
-    from core.ciphers import AES
-    from core.hashing import SHA256, SHA3_256
-    from core.mac import HMAC, CMAC
-    from modes.ecb import ECB
-    from modes.cbc import CBC
-    from modes.cfb import CFB
-    from modes.ofb import OFB
-    from modes.ctr import CTR
+    from cli_parser import CLIParser
+    from ciphers.aes import AES
+    from hash.sha256 import SHA256
+    from hash.sha3_256 import SHA3_256
+    from mac.hmac import HMAC
+    # Убираем CMAC, так как он не реализован
+    # from mac.cmac import CMAC
+    from modes.ecb import ECBMode as ECB
+    from modes.cbc import CBCMode as CBC
+    from modes.cfb import CFBMode as CFB
+    from modes.ofb import OFBMode as OFB
+    from modes.ctr import CTRMode as CTR
     from modes.gcm import GCM, AuthenticationError
     from aead.encrypt_then_mac import EncryptThenMAC
-    # KDF imports
-    from kdf.pbkdf2 import pbkdf2_hmac_sha256
-    from kdf.hkdf import derive_key
+    # KDF imports (если есть)
+    try:
+        from kdf.pbkdf2 import pbkdf2_hmac_sha256
+        from kdf.hkdf import derive_key
+        has_kdf = True
+    except ImportError:
+        has_kdf = False
 
 except ImportError as e:
-    # Если не сработало, пробуем импортировать как модуль src
-    try:
-        from src.cli.parser import CLIParser
-        from src.core.ciphers import AES
-        from src.core.hashing import SHA256, SHA3_256
-        from src.core.mac import HMAC, CMAC
-        from src.modes.ecb import ECB
-        from src.modes.cbc import CBC
-        from src.modes.cfb import CFB
-        from src.modes.ofb import OFB
-        from src.modes.ctr import CTR
-        from src.modes.gcm import GCM, AuthenticationError
-        from src.aead.encrypt_then_mac import EncryptThenMAC
-        # KDF imports
-        from src.kdf.pbkdf2 import pbkdf2_hmac_sha256
-        from src.kdf.hkdf import derive_key
-
-    except ImportError as e2:
-        print(f"FATAL: Could not import modules: {e2}", file=sys.stderr)
-        sys.exit(1)
+    print(f"FATAL: Could not import modules: {e}", file=sys.stderr)
+    sys.exit(1)
 
 
 class CryptoCore:
@@ -72,6 +61,9 @@ class CryptoCore:
         elif args.command == 'dgst':
             self.handle_digest(args)
         elif args.command == 'derive':
+            if not has_kdf:
+                print("[ERROR] KDF module not available", file=sys.stderr)
+                sys.exit(1)
             self.handle_derive(args)
         else:
             print(f"Unknown command: {args.command}", file=sys.stderr)
@@ -305,24 +297,9 @@ class CryptoCore:
                     result = hmac.compute(data)
 
             elif args.cmac:
-                # CMAC computation/verification
-                key = bytes.fromhex(args.key)
-                cmac = CMAC(key)
-
-                if args.verify:
-                    with open(args.verify, 'r') as f:
-                        expected_hex = f.read().strip()
-                    expected = bytes.fromhex(expected_hex)
-                    computed = cmac.compute(data)
-
-                    if cmac.verify(data, expected):
-                        print(f"[SUCCESS] CMAC verification passed")
-                        sys.exit(0)
-                    else:
-                        print(f"[ERROR] CMAC verification failed", file=sys.stderr)
-                        sys.exit(1)
-                else:
-                    result = cmac.compute(data)
+                # CMAC временно не поддерживается
+                print("[ERROR] CMAC is not implemented yet", file=sys.stderr)
+                sys.exit(1)
 
             else:
                 # Regular hash

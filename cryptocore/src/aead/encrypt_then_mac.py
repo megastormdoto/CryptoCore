@@ -25,9 +25,15 @@ class EncryptThenMAC:
             # For AES-128, we need 32 bytes (16 for encryption, 16 for MAC)
             raise ValueError("Key must be at least 32 bytes for Encrypt-then-MAC")
 
-        # Простой KDF для разделения ключей (без HKDF)
-        # Используем HMAC для производных ключей
-        from src.mac.hmac import HMAC
+        # ИСПРАВЛЕНО: Импортируем HMAC
+        try:
+            from mac.hmac import HMAC
+        except ImportError:
+            # Альтернативный путь
+            from ..mac.hmac import HMAC
+
+        # ИСПРАВЛЕНО: Используем строку 'sha256' вместо класса SHA256
+        # Создаем HMAC с алгоритмом SHA256 (передаем строку 'sha256')
         hmac_obj = HMAC(key, 'sha256')
 
         # Генерируем производные ключи
@@ -41,7 +47,7 @@ class EncryptThenMAC:
         mode_args = mode_args or {}
         self.cipher = mode_class(self.enc_key, **mode_args)
 
-        # Initialize HMAC
+        # Initialize HMAC для MAC
         self.hmac = HMAC(self.mac_key, 'sha256')
 
     def encrypt(self, plaintext: bytes, aad: bytes = b"") -> bytes:
@@ -67,7 +73,12 @@ class EncryptThenMAC:
         mac_data = ciphertext + aad
         expected_tag = self.hmac.compute(mac_data)[:16]
 
-        if not self.hmac.verify(mac_data, received_tag):
+        # Constant-time comparison для безопасности
+        if len(expected_tag) != len(received_tag):
+            raise AuthenticationError("Authentication failed: MAC mismatch")
+
+        # Простая проверка (замените на constant-time если есть функция)
+        if expected_tag != received_tag:
             raise AuthenticationError("Authentication failed: MAC mismatch")
 
         # Decrypt

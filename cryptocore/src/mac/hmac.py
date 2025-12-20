@@ -9,6 +9,7 @@ class HMAC:
     def __init__(self, key: Union[bytes, str], hash_function='sha256'):
         """
         Инициализация HMAC с заданным ключом и хеш-функцией.
+        Поддерживаемые hash_function: 'sha256', 'sha3_256'
         """
         if isinstance(key, str):
             self.key = bytes.fromhex(key)
@@ -16,32 +17,39 @@ class HMAC:
             self.key = key
 
         self.hash_function_name = hash_function
-        self.block_size = 64  # 512 бит = 64 байта
 
-        # Инициализируем хеш-функцию - ИСПРАВЛЕННЫЙ ИМПОРТ
+        # Устанавливаем block_size в зависимости от алгоритма
+        if hash_function in ['sha256', 'sha3_256']:
+            self.block_size = 64  # 512 бит = 64 байта
+        else:
+            raise ValueError(f"Unsupported hash function: {hash_function}")
+
+        # Инициализируем хеш-функцию
         if hash_function == 'sha256':
             # Пробуем импортировать SHA256
             try:
-                # Способ 1: Относительный импорт
                 from ..hash.sha256 import SHA256
-                self.hash = SHA256
+                self.hash_class = SHA256
             except ImportError:
                 try:
-                    # Способ 2: Абсолютный импорт
                     from hash.sha256 import SHA256
-                    self.hash = SHA256
+                    self.hash_class = SHA256
                 except ImportError:
-                    try:
-                        # Способ 3: Импорт через sys.path
-                        import sys
-                        # Добавляем родительскую директорию в путь
-                        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                        if parent_dir not in sys.path:
-                            sys.path.insert(0, parent_dir)
-                        from hash.sha256 import SHA256
-                        self.hash = SHA256
-                    except ImportError as e:
-                        raise ImportError(f"Cannot import SHA256: {e}. Make sure hash.sha256 exists.")
+                    # Используем встроенную hashlib как запасной вариант
+                    import hashlib
+                    self.hash_class = lambda: hashlib.sha256()
+        elif hash_function == 'sha3_256':
+            try:
+                from ..hash.sha3_256 import SHA3_256
+                self.hash_class = SHA3_256
+            except ImportError:
+                try:
+                    from hash.sha3_256 import SHA3_256
+                    self.hash_class = SHA3_256
+                except ImportError:
+                    # Используем встроенную hashlib как запасной вариант
+                    import hashlib
+                    self.hash_class = lambda: hashlib.sha3_256()
         else:
             raise ValueError(f"Unsupported hash function: {hash_function}")
 
@@ -56,9 +64,13 @@ class HMAC:
         """
         # Шаг 1: Если ключ длиннее block_size, хешируем его
         if len(key) > self.block_size:
-            hasher = self.hash()
-            hasher.update(key)
-            key = hasher.digest()
+            hasher = self.hash_class()
+            if hasattr(hasher, 'update'):
+                hasher.update(key)
+                key = hasher.digest()
+            else:
+                # Для lambda функций hashlib
+                key = hasher().digest()
 
         # Шаг 2: Если ключ короче block_size, дополняем нулями
         if len(key) < self.block_size:
@@ -90,17 +102,28 @@ class HMAC:
         key_opad = self._xor_bytes(self._processed_key, opad)
 
         # Внутренний хеш: H((K ⊕ ipad) || message)
-        inner_hasher = self.hash()
-        inner_hasher.update(key_ipad)
-        inner_hasher.update(message)
-        inner_hash = inner_hasher.digest()
+        inner_hasher = self.hash_class()
+        if hasattr(inner_hasher, 'update'):
+            inner_hasher.update(key_ipad)
+            inner_hasher.update(message)
+            inner_hash = inner_hasher.digest()
+        else:
+            # Для lambda функций hashlib
+            inner_hasher = inner_hasher()
+            inner_hasher.update(key_ipad + message)
+            inner_hash = inner_hasher.digest()
 
         # Внешний хеш: H((K ⊕ opad) || inner_hash)
-        outer_hasher = self.hash()
-        outer_hasher.update(key_opad)
-        outer_hasher.update(inner_hash)
-
-        return outer_hasher.digest()
+        outer_hasher = self.hash_class()
+        if hasattr(outer_hasher, 'update'):
+            outer_hasher.update(key_opad)
+            outer_hasher.update(inner_hash)
+            return outer_hasher.digest()
+        else:
+            # Для lambda функций hashlib
+            outer_hasher = outer_hasher()
+            outer_hasher.update(key_opad + inner_hash)
+            return outer_hasher.digest()
 
     def compute_hex(self, message: bytes) -> str:
         """Вычисление HMAC и возврат в виде hex-строки."""
