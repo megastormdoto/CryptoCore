@@ -20,6 +20,17 @@ python -m pytest tests/ -k "cbc" -v (проверка всех тестов)
 
 cd ~/CryptoCore (в папку проекта переходим)
 
+echo "Test data for CBC from megastorm" > megadoto.txt
+
+openssl enc -aes-128-cbc -in test_linux.txt -out test_linux.enc -K 000102030405060708090A0B0C0D0E0F -iv 000102030405060708090A0B0C0D0E0F
+
+openssl enc -aes-128-cbc -d -in test_linux.enc -out test_linux.dec -K 000102030405060708090A0B0C0D0E0F -iv 000102030405060708090A0B0C0D0E0F
+
+diff test_linux.txt test_linux.dec && echo "шифрование и дешифрование CBC работает через OpenSSL"
+
+
+
+
 echo "тест cbc файла для шифрования и дешифрования" > megastorm_test.txt
 
 python -c "
@@ -52,6 +63,9 @@ else:
 ls -la megastorm_test.* (смотрим что файлы создались)
 
 diff megastorm_test.txt megastorm_test.dec (различий не выявлено проверяем)
+
+
+
 
 pip install numpy
 
