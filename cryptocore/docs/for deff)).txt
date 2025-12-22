@@ -16,6 +16,8 @@ pip install pycryptodome pytest pytest-cov
 
 python -m pytest tests/unit/test_cbc_comprehensive.py -v (тесты cbc)
 
+python -m pytest tests/ -k "cbc" -v (проверка всех тестов)
+
 cd ~/CryptoCore (в папку проекта переходим)
 
 echo "тест cbc файла для шифрования и дешифрования" > megastorm_test.txt
@@ -49,10 +51,10 @@ else:
 
 ls -la megastorm_test.* (смотрим что файлы создались)
 
-diff megastorm_test.txt megastorm_test.dec (различий не выявлено проверяем) 
+diff megastorm_test.txt megastorm_test.dec (различий не выявлено проверяем)
 
 pip install numpy
 
-python -m pytest tests/ -k "cbc" -v (проверка всех тестов)
+python -m pytest tests/ -q --tb=no (проверка всех тестов с итоговой статистикой)
 
-python test_openssl_compatibility.py 2>/dev/null || echo "Тесты OpenSSL пропущены" (на совместимость с OpenSSL)     
+   
