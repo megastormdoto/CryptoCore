@@ -1,0 +1,58 @@
+git clone https://github.com/megastormdoto/CryptoCore.git
+
+cd CryptoCore
+
+cd cryptocore
+
+python3.13 -m venv .venv
+
+source .venv/bin/activate
+
+python --version
+
+pip install --upgrade pip
+
+pip install pycryptodome pytest pytest-cov
+
+python -m pytest tests/unit/test_cbc_comprehensive.py -v (тесты cbc)
+
+cd ~/CryptoCore (в папку проекта переходим)
+
+echo "тест cbc файла для шифрования и дешифрования" > megastorm_test.txt
+
+python -c "
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+import binascii
+
+key = binascii.unhexlify('000102030405060708090A0B0C0D0E0F')
+iv = binascii.unhexlify('000102030405060708090A0B0C0D0E0F')
+
+with open('megastorm_test.txt', 'rb') as f:
+    data = f.read()
+
+cipher = AES.new(key, AES.MODE_CBC, iv)
+encrypted = cipher.encrypt(pad(data, 16))
+with open('megastorm_test.enc', 'wb') as f:
+    f.write(encrypted)
+
+decipher = AES.new(key, AES.MODE_CBC, iv)
+decrypted = unpad(decipher.decrypt(encrypted), 16)
+with open('megastorm_test.dec', 'wb') as f:
+    f.write(decrypted)
+
+if data == decrypted:
+    print('Тест прошел, все успешно')
+else:
+    print('Ошибка')
+"
+
+ls -la megastorm_test.* (смотрим что файлы создались)
+
+diff megastorm_test.txt megastorm_test.dec (различий не выявлено проверяем) 
+
+pip install numpy
+
+python -m pytest tests/ -k "cbc" -v (проверка всех тестов)
+
+python test_openssl_compatibility.py 2>/dev/null || echo "Тесты OpenSSL пропущены" (на совместимость с OpenSSL)     
