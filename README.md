@@ -1,7 +1,48 @@
-```markdown
 # CryptoCore - Cryptographic Core Operations
 
 Инструмент командной строки для шифрования, дешифрования, вычисления хэш-сумм, HMAC, GCM аутентифицированного шифрования и деривации ключей.
+
+## Установка и настройка
+
+### 1. Клонирование репозитория
+```bash
+git clone https://github.com/megastormdoto/CryptoCore.git
+cd CryptoCore
+```
+
+### 2. Настройка виртуального окружения
+```bash
+# Создание виртуального окружения
+python3 -m venv venv
+
+# Активация виртуального окружения
+source venv/bin/activate  # Linux/Mac
+# или
+venv\Scripts\activate     # Windows
+
+# Обновление pip
+pip install --upgrade pip
+```
+
+### 3. Установка зависимостей
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Установка проекта в режиме разработки
+```bash
+pip install -e .
+```
+
+### 5. Проверка установки
+```bash
+# Проверка работоспособности
+cd src
+python -c "import crypto; print('Проект успешно импортирован')"
+
+# Проверка CLI
+python -m cryptocore --help
+```
 
 ## Новые возможности (Sprint 8)
 
@@ -98,54 +139,6 @@ tests/
 - Документирование внешних зависимостей
 - Создание файла CHANGELOG.md
 
-#### Подготовка к демонстрации
-
-##### Демонстрационные сценарии
-1. **Полный рабочий процесс безопасности**:
-   - Деривация ключа из пароля через PBKDF2
-   - Шифрование файла с GCM и дополнительными аутентифицированными данными (AAD)
-   - Проверка целостности через HMAC
-   - Безопасная передача и верификация
-
-2. **Совместимость с OpenSSL**:
-   - Шифрование файла в CryptoCore
-   - Расшифровка файла в OpenSSL (и наоборот)
-   - Проверка идентичности результатов
-
-3. **Обработка больших файлов**:
-   - Потоковая обработка файлов размером более 1 ГБ
-   - Проверка производительности и использования памяти
-   - Корректность работы с файлами разных размеров
-
-##### Примеры полного workflow
-
-**Защищенная передача файлов с GCM:**
-```bash
-# 1. Отправитель шифрует с AAD
-cryptocore encrypt --key 00112233445566778899aabbccddeeff \
-    --input confidential.pdf --output confidential.pdf.enc \
-    --mode gcm --aad "sender:alice|receiver:bob|date:2024"
-
-# 2. Получатель дешифрует с правильным AAD
-cryptocore encrypt --decrypt \
-    --key 00112233445566778899aabbccddeeff \
-    --input confidential.pdf.enc --output decrypted.pdf \
-    --mode gcm --aad "sender:alice|receiver:bob|date:2024"
-```
-
-**Создание и использование ключей через KDF:**
-```bash
-# 1. Создать ключ из пароля
-cryptocore derive --password "ServerMasterPass" \
-    --iterations 200000 --length 32 \
-    --output server_key.bin
-
-# 2. Использовать ключ для шифрования
-cryptocore encrypt --key $(xxd -p server_key.bin) \
-    --input database_backup.sql --output backup.enc \
-    --mode gcm --aad "db_backup_2024"
-```
-
 ## Возможности по спринтам
 
 ### Sprint 1-2: AES-128 шифрование
@@ -188,17 +181,6 @@ cryptocore encrypt --key $(xxd -p server_key.bin) \
 - Подготовка к демонстрации
 - Профессиональная структура проекта
 
-## Установка
-
-```bash
-# Клонирование репозитория
-git clone https://github.com/megastormdoto/CryptoCore
-cd CryptoCore
-
-# Установка зависимостей
-pip install -r requirements.txt
-```
-
 ## Использование
 
 ### Основные команды
@@ -206,51 +188,51 @@ pip install -r requirements.txt
 **Key Derivation (Sprint 7):**
 ```bash
 # Деривация ключа из пароля
-cryptocore derive --password <password> --salt <hex_salt> --iterations <count> --length <bytes>
+python -m cryptocore derive --password <password> --salt <hex_salt> --iterations <count> --length <bytes>
 
 # Деривация из мастер-ключа
-cryptocore derive --master-key <hex_master_key> --context <purpose> --length <bytes>
+python -m cryptocore derive --master-key <hex_master_key> --context <purpose> --length <bytes>
 
 # Сохранение в файл
-cryptocore derive --password <password> --output key.bin
+python -m cryptocore derive --password <password> --output key.bin
 ```
 
 **Аутентифицированное шифрование GCM (Sprint 6):**
 ```bash
 # Шифрование с AAD
-cryptocore encrypt --key <hex_key> --input plain.txt --output encrypted.bin --mode gcm --aad <hex_aad>
+python -m cryptocore encrypt --key <hex_key> --input plain.txt --output encrypted.bin --mode gcm --aad <hex_aad>
 
 # Дешифрование с AAD
-cryptocore encrypt --decrypt --key <hex_key> --input encrypted.bin --output decrypted.txt --mode gcm --aad <hex_aad>
+python -m cryptocore encrypt --decrypt --key <hex_key> --input encrypted.bin --output decrypted.txt --mode gcm --aad <hex_aad>
 ```
 
 **HMAC вычисление и проверка (Sprint 5):**
 ```bash
 # Вычисление HMAC-SHA-256
-cryptocore hmac --algorithm sha256 --key mysecret123 --input document.pdf
+python -m cryptocore hmac --algorithm sha256 --key mysecret123 --input document.pdf
 
 # Проверка HMAC
-cryptocore hmac --algorithm sha256 --key mysecret123 --input document.pdf --verify document.hmac
+python -m cryptocore hmac --algorithm sha256 --key mysecret123 --input document.pdf --verify document.hmac
 ```
 
 **Хэширование файлов (Sprint 4):**
 ```bash
-cryptocore dgst --algorithm sha256 --input file.txt
+python -m cryptocore dgst --algorithm sha256 --input file.txt
 ```
 
 **Шифрование/дешифрование (Sprint 1-3):**
 ```bash
-cryptocore encrypt --mode cbc --input data.txt --output data.enc
+python -m cryptocore encrypt --mode cbc --input data.txt --output data.enc
 ```
 
 ### Поддерживаемые режимы работы
 
 | Команда | Функциональность | Спринт | Пример использования |
 |---------|------------------|--------|---------------------|
-| **encrypt** | Шифрование/дешифрование AES | 1-3,6 | `cryptocore encrypt --mode gcm --key <hex> --input file.txt` |
-| **dgst** | Хэширование и HMAC | 4-5 | `cryptocore dgst --algorithm sha256 --input file.txt` |
-| **hmac** | Вычисление и проверка HMAC | 5 | `cryptocore hmac --key <secret> --input data.txt` |
-| **derive** | Деривация ключей | 7 | `cryptocore derive --password <pass> --salt <hex>` |
+| **encrypt** | Шифрование/дешифрование AES | 1-3,6 | `python -m cryptocore encrypt --mode gcm --key <hex> --input file.txt` |
+| **dgst** | Хэширование и HMAC | 4-5 | `python -m cryptocore dgst --algorithm sha256 --input file.txt` |
+| **hmac** | Вычисление и проверка HMAC | 5 | `python -m cryptocore hmac --key <secret> --input data.txt` |
+| **derive** | Деривация ключей | 7 | `python -m cryptocore derive --password <pass> --salt <hex>` |
 
 ### Поддерживаемые режимы шифрования
 
@@ -324,7 +306,7 @@ def derive_key(master_key: bytes, context: str, length: int = 32) -> bytes:
 #### 1. Создание ключа шифрования из пароля:
 ```bash
 # Деривация 256-битного ключа AES
-cryptocore derive --password "StrongPassword123!" \
+python -m cryptocore derive --password "StrongPassword123!" \
     --iterations 100000 --length 32 \
     --output aes_key.bin
 ```
@@ -332,15 +314,15 @@ cryptocore derive --password "StrongPassword123!" \
 #### 2. Key hierarchy для многоключевой системы:
 ```bash
 # Из одного мастер-ключа получить разные ключи
-cryptocore derive --master-key <master_hex> --context "encryption" --length 32
-cryptocore derive --master-key <master_hex> --context "authentication" --length 32
-cryptocore derive --master-key <master_hex> --context "integrity" --length 32
+python -m cryptocore derive --master-key <master_hex> --context "encryption" --length 32
+python -m cryptocore derive --master-key <master_hex> --context "authentication" --length 32
+python -m cryptocore derive --master-key <master_hex> --context "integrity" --length 32
 ```
 
 #### 3. Безопасное хранение производных ключей:
 ```bash
 # Генерация и сохранение ключа
-cryptocore derive --password-file app_password.txt \
+python -m cryptocore derive --password-file app_password.txt \
     --iterations 500000 --length 64 \
     --output master.key --output-salt used.salt
 ```
@@ -465,21 +447,36 @@ cryptocore/
 
 ### Запуск тестов:
 ```bash
+# Активация виртуального окружения
+source venv/bin/activate
+
+# Переход в директорию проекта
+cd src
+
 # Тестирование Key Derivation (Sprint 7)
-python tests/test_pbkdf2.py
-python tests/test_hkdf.py
+python -m pytest tests/unit/test_pbkdf2.py -v
+python -m pytest tests/unit/test_hkdf.py -v
 
 # Тестирование GCM (Sprint 6)
-python tests/test_gcm.py
+python -m pytest tests/unit/test_gcm.py -v
 
 # Тестирование безопасности GCM
-python tests/test_gcm_security.py
+python -m pytest tests/unit/test_gcm_security.py -v
 
 # Тестирование HMAC (Sprint 5)
-python tests/test_hmac.py
+python -m pytest tests/unit/test_hmac.py -v
+
+# Тестирование SHA-256 (Sprint 4)
+python -m pytest tests/unit/test_sha256.py -v
+
+# Тестирование AES (Sprint 1-2)
+python -m pytest tests/unit/test_aes.py -v
 
 # Полный набор тестов
-python -m pytest tests/
+python -m pytest tests/ -v
+
+# Интеграционные тесты CLI
+python -m pytest tests/integration/ -v
 ```
 
 ### Тесты Key Derivation (Sprint 7):
@@ -504,12 +501,12 @@ def test_pbkdf2_sha256_vectors():
 ### Защищенная передача файлов с GCM:
 ```bash
 # 1. Отправитель шифрует с AAD
-cryptocore encrypt --key 00112233445566778899aabbccddeeff \
+python -m cryptocore encrypt --key 00112233445566778899aabbccddeeff \
     --input confidential.pdf --output confidential.pdf.enc \
     --mode gcm --aad "sender:alice|receiver:bob|date:2024"
 
 # 2. Получатель дешифрует с правильным AAD
-cryptocore encrypt --decrypt \
+python -m cryptocore encrypt --decrypt \
     --key 00112233445566778899aabbccddeeff \
     --input confidential.pdf.enc --output decrypted.pdf \
     --mode gcm --aad "sender:alice|receiver:bob|date:2024"
@@ -518,12 +515,12 @@ cryptocore encrypt --decrypt \
 ### Создание и использование ключей через KDF:
 ```bash
 # 1. Создать ключ из пароля
-cryptocore derive --password "ServerMasterPass" \
+python -m cryptocore derive --password "ServerMasterPass" \
     --iterations 200000 --length 32 \
     --output server_key.bin
 
 # 2. Использовать ключ для шифрования
-cryptocore encrypt --key $(xxd -p server_key.bin) \
+python -m cryptocore encrypt --key $(xxd -p server_key.bin) \
     --input database_backup.sql --output backup.enc \
     --mode gcm --aad "db_backup_2024"
 ```
@@ -545,59 +542,21 @@ cryptocore encrypt --key $(xxd -p server_key.bin) \
 4. **Разные ключи для разных целей** - разделение ответственности
 5. **Катастрофический отказ защищает от атак** - полное удаление при неудачной аутентификации
 
-## Статус реализации
-
-### Sprint 8: Полировка библиотеки и документация
-- **Комплексная документация** - API, руководства пользователя и разработчика
-- **Организация тестов** - 245 тестов, структурированная тестовая система
-- **Верификация корректности** - проверка всех алгоритмов через тестовые векторы
-- **Подготовка к демонстрации** - готовые демонстрационные сценарии
-- **Профессиональная структура проекта** - соответствует индустриальным стандартам
-
-### Sprint 7: Key Derivation Functions
-- **PBKDF2-HMAC-SHA256** - реализация с нуля по RFC 2898
-- **Key Hierarchy** - детерминированная деривация из мастер-ключа
-- **CLI команда derive** - поддержка всех параметров деривации
-- **Безопасное управление паролями** - чтение из файлов, env переменных
-- **Автогенерация соли** - криптографически случайные 16-байтовые соли
-- **Тестирование** - полный набор тестов включая производительность
-
-### Sprint 6: GCM аутентифицированное шифрование
-- **GCM реализация** - с нуля по NIST SP 800-38D
-- **Поддержка AAD** - аутентификация дополнительных данных
-- **Encrypt-then-MAC** - комбинированный режим шифрования
-- **Катастрофический отказ** - удаление выходных данных при ошибке аутентификации
-
-### Sprint 5: HMAC
-- **HMAC реализация** - с нуля по RFC 2104
-- **Поддержка SHA-256 и SHA3-256** - два алгоритма хэширования
-- **Вычисление и проверка** - полный функционал HMAC
-
-### Sprint 4: Хэш-функции
-- **SHA-256 реализация** - с нуля по NIST FIPS 180-4
-- **SHA3-256** - через hashlib библиотеку
-- **Обработка файлов** - поддержка файлов любого размера
-
-### Sprint 3: CSPRNG
-- **Криптографический ГСЧ** - безопасная генерация ключей
-- **Проверка слабых ключей** - обнаружение и отклонение слабых ключей
-- **Интеграция с NIST STS** - статистические тесты случайности
-
-### Sprint 1-2: AES-128 шифрование
-- **AES-128 реализация** - базовый блок шифрования
-- **5 режимов работы** - ECB, CBC, CFB, OFB, CTR
-- **PKCS#7 паддинг** - корректное дополнение данных
-- **Совместимость с OpenSSL** - проверка интероперабельности
-
 ## Отладка
 
 Если возникают проблемы:
 ```bash
+# Активация виртуального окружения
+source venv/bin/activate
+
+# Переход в директорию src
+cd src
+
 # Проверка Key Derivation импортов
 python -c "from src.kdf.pbkdf2 import pbkdf2_hmac_sha256; print('PBKDF2 import OK')"
 
 # Проверка CLI
-python main.py derive --help
+python -m cryptocore derive --help
 
 # Простой тест Key Derivation
 python -c "
@@ -616,6 +575,3 @@ pbkdf2_hmac_sha256('password', 'salt', 10000, 32)
 elapsed = time.time() - start
 print(f'10,000 iterations: {elapsed:.2f} seconds')
 "
-```
-
-Проект CryptoCore завершен и готов к использованию. Все заявленные в спринтах 1-8 функции реализованы, протестированы и документированы.
