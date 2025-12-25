@@ -1,189 +1,391 @@
-# CryptoCore Python API Documentation
+Переделываю API.md и USERGUIDE.md под реальную структуру твоего проекта:
+
+---
+
+## `API.md`
+
+# CryptoCore API Documentation
 
 ## Overview
-CryptoCore provides cryptographic primitives implemented in Python.
+CryptoCore provides cryptographic primitives implemented from scratch in Python. This is an educational project demonstrating how cryptographic algorithms work internally.
 
-## Table of Contents
-- [AES Encryption](#aes-encryption)
-- [Encryption Modes](#encryption-modes)
-- [Hash Functions](#hash-functions)
-- [HMAC](#hmac)
-- [GCM Authenticated Encryption](#gcm-authenticated-encryption)
-- [Key Derivation Functions](#key-derivation-functions)
+## Module Structure
+```
+src/
+├── aes.py              # AES block cipher implementation
+├── modes/              # Encryption modes
+│   ├── cbc.py         # CBC mode
+│   ├── ctr.py         # CTR mode
+│   ├── gcm.py         # GCM mode (authenticated encryption)
+│   └── ...            # Other modes
+├── hash/               # Hash functions
+│   ├── sha256.py      # SHA-256 implementation
+│   └── sha3_256.py    # SHA3-256 (via hashlib)
+├── mac/                # Message Authentication Codes
+│   └── hmac.py        # HMAC implementation
+├── kdf/                # Key Derivation Functions
+│   ├── pbkdf2.py      # PBKDF2 implementation
+│   └── hkdf.py        # Key hierarchy
+└── main.py            # CLI entry point
+```
 
 ## AES Encryption
 
-### `class AES`
+### Class: `AES` (from `src/aes.py`)
 ```python
 class AES:
-    """AES block cipher implementation"""
+    """AES block cipher implementation (128-bit only)"""
+    
+    def __init__(self, key: bytes):
+        """
+        Initialize AES with a 16-byte key.
+        
+        Args:
+            key: 16-byte encryption key
+        """
+        
+    def encrypt_block(self, plaintext: bytes) -> bytes:
+        """
+        Encrypt a single 16-byte block.
+        
+        Args:
+            plaintext: 16-byte block to encrypt
+            
+        Returns:
+            16-byte encrypted block
+        """
+        
+    def decrypt_block(self, ciphertext: bytes) -> bytes:
+        """
+        Decrypt a single 16-byte block.
+        
+        Args:
+            ciphertext: 16-byte block to decrypt
+            
+        Returns:
+            16-byte decrypted block
+        """
 ```
-
-**Methods:**
-- `__init__(key: bytes)` - Initialize with 16/24/32 byte key
-- `encrypt_block(plaintext: bytes) -> bytes` - Encrypt 16-byte block
-- `decrypt_block(ciphertext: bytes) -> bytes` - Decrypt 16-byte block
 
 **Example:**
 ```python
-from cryptocore.aes import AES
+from src.aes import AES
 
-key = b'0' * 16
+# 16-byte key (128-bit AES)
+key = b'\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f'
 aes = AES(key)
-ciphertext = aes.encrypt_block(b'hello world!!!!!')
+
+# Encrypt a single block
+plaintext = b'hello world!!!!!'  # Must be exactly 16 bytes
+ciphertext = aes.encrypt_block(plaintext)
+decrypted = aes.decrypt_block(ciphertext)
+assert plaintext == decrypted
 ```
 
 ## Encryption Modes
 
-### `CBC` Mode
+### CBC Mode (from `src/modes/cbc.py`)
 ```python
-from cryptocore.modes import cbc_encrypt, cbc_decrypt
-
-ciphertext = cbc_encrypt(key, iv, plaintext)
-plaintext = cbc_decrypt(key, iv, ciphertext)
+class CBCMode:
+    """Cipher Block Chaining mode"""
+    
+    def __init__(self, aes: AES, iv: bytes):
+        """
+        Initialize CBC mode.
+        
+        Args:
+            aes: AES instance
+            iv: 16-byte initialization vector
+        """
+        
+    def encrypt(self, plaintext: bytes) -> bytes:
+        """
+        Encrypt data using CBC mode.
+        
+        Args:
+            plaintext: Data to encrypt (any length)
+            
+        Returns:
+            IV + ciphertext
+        """
+        
+    def decrypt(self, data: bytes) -> bytes:
+        """
+        Decrypt data using CBC mode.
+        
+        Args:
+            data: IV + ciphertext
+            
+        Returns:
+            Plaintext
+        """
 ```
 
-### `CTR` Mode
+**Example:**
 ```python
-from cryptocore.modes import ctr_encrypt, ctr_decrypt
-# CTR encryption/decryption use same function
-ciphertext = ctr_encrypt(key, nonce, plaintext)
+from src.aes import AES
+from src.modes.cbc import CBCMode
+
+key = b'0' * 16
+iv = b'1' * 16
+
+aes = AES(key)
+cbc = CBCMode(aes, iv)
+
+plaintext = b"This is a test message for CBC encryption!"
+ciphertext = cbc.encrypt(plaintext)  # Includes IV at beginning
+decrypted = cbc.decrypt(ciphertext)
+assert plaintext == decrypted
 ```
 
-### `GCM` Mode
+### GCM Mode (from `src/modes/gcm.py`)
 ```python
-from cryptocore.modes.gcm import GCM
+class GCM:
+    """Galois/Counter Mode - Authenticated Encryption"""
+    
+    def __init__(self, key: bytes, nonce: bytes = None):
+        """
+        Initialize GCM mode.
+        
+        Args:
+            key: 16-byte AES key
+            nonce: 12-byte nonce (generated if None)
+        """
+        
+    def encrypt(self, plaintext: bytes, aad: bytes = b"") -> bytes:
+        """
+        Encrypt and authenticate data.
+        
+        Args:
+            plaintext: Data to encrypt
+            aad: Additional Authenticated Data (not encrypted)
+            
+        Returns:
+            nonce + ciphertext + tag (12 + len(ciphertext) + 16 bytes)
+        """
+        
+    def decrypt(self, data: bytes, aad: bytes = b"") -> bytes:
+        """
+        Decrypt and verify authentication.
+        
+        Args:
+            data: nonce + ciphertext + tag
+            aad: Additional Authenticated Data
+            
+        Returns:
+            Plaintext
+            
+        Raises:
+            AuthenticationError: If authentication fails
+        """
+```
 
+**Example:**
+```python
+from src.modes.gcm import GCM
+
+key = b'\x00' * 16
 gcm = GCM(key)
-ciphertext = gcm.encrypt(plaintext, aad=aad_data)
-plaintext = gcm.decrypt(ciphertext, aad=aad_data)  # Raises AuthenticationError on failure
+
+plaintext = b"Sensitive data"
+aad = b"metadata:user123"  # Authenticated but not encrypted
+
+# Encrypt with authentication
+encrypted = gcm.encrypt(plaintext, aad=aad)
+
+# Decrypt and verify
+try:
+    decrypted = gcm.decrypt(encrypted, aad=aad)
+    print("Authentication successful")
+except AuthenticationError:
+    print("Authentication failed - data may be tampered")
 ```
 
 ## Hash Functions
 
-### `sha256(data: bytes) -> bytes`
+### SHA-256 (from `src/hash/sha256.py`)
 ```python
-from cryptocore.hash import sha256
-
-hash_value = sha256(b"hello world")
-# Returns 32 bytes
+def sha256(data: bytes) -> bytes:
+    """
+    Compute SHA-256 hash of data.
+    
+    Args:
+        data: Input data
+        
+    Returns:
+        32-byte hash value
+    """
 ```
 
-### `sha3_256(data: bytes) -> bytes`
+**Example:**
 ```python
-from cryptocore.hash import sha3_256
+from src.hash.sha256 import sha256
 
-hash_value = sha3_256(b"hello world")
-# Returns 32 bytes
+data = b"hello world"
+hash_value = sha256(data)
+print(f"SHA-256: {hash_value.hex()}")
+# Output: b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9
 ```
 
-## HMAC
-
-### `hmac_sha256(key: bytes, message: bytes) -> bytes`
+### SHA3-256 (from `src/hash/sha3_256.py`)
 ```python
-from cryptocore.hmac import hmac_sha256
+def sha3_256(data: bytes) -> bytes:
+    """
+    Compute SHA3-256 hash of data (via hashlib).
+    
+    Args:
+        data: Input data
+        
+    Returns:
+        32-byte hash value
+    """
+```
 
-mac = hmac_sha256(b"secret_key", b"message")
-# Returns 32-byte HMAC
+## HMAC (from `src/mac/hmac.py`)
+```python
+def hmac_sha256(key: bytes, message: bytes) -> bytes:
+    """
+    Compute HMAC-SHA256 of message.
+    
+    Args:
+        key: Secret key
+        message: Message to authenticate
+        
+    Returns:
+        32-byte HMAC value
+    """
+```
+
+**Example:**
+```python
+from src.mac.hmac import hmac_sha256
+
+key = b"secret_key"
+message = b"important message"
+
+mac = hmac_sha256(key, message)
+print(f"HMAC: {mac.hex()}")
 ```
 
 ## Key Derivation Functions
 
-### `pbkdf2_hmac_sha256(password, salt, iterations, dklen)`
+### PBKDF2 (from `src/kdf/pbkdf2.py`)
 ```python
-from cryptocore.kdf import pbkdf2_hmac_sha256
-
-# Derive key from password
-key = pbkdf2_hmac_sha256(
-    password="MyPassword",
-    salt=b"saltvalue",
-    iterations=100000,
-    dklen=32
-)
+def pbkdf2_hmac_sha256(password: Union[str, bytes], 
+                       salt: Union[str, bytes], 
+                       iterations: int, 
+                       dklen: int) -> bytes:
+    """
+    Derive key using PBKDF2-HMAC-SHA256.
+    
+    Args:
+        password: Password string or bytes
+        salt: Salt string or bytes
+        iterations: Number of iterations (recommended: 100,000+)
+        dklen: Desired key length in bytes
+        
+    Returns:
+        Derived key
+    """
 ```
 
-### `derive_key(master_key, context, length)`
+**Example:**
 ```python
-from cryptocore.kdf import derive_key
+from src.kdf.pbkdf2 import pbkdf2_hmac_sha256
 
-# Key hierarchy: derive specific key from master
-encryption_key = derive_key(
-    master_key=master_key_bytes,
-    context="database_encryption",
-    length=32
-)
+password = "MySecurePassword123!"
+salt = b"unique_salt_value"
+iterations = 100000
+dklen = 32  # 256-bit key
+
+derived_key = pbkdf2_hmac_sha256(password, salt, iterations, dklen)
+print(f"Derived key: {derived_key.hex()}")
 ```
 
-## Utility Functions
-
-### Random Number Generation
+### Key Hierarchy (from `src/kdf/hkdf.py`)
 ```python
-from cryptocore.random import generate_key, generate_nonce, generate_salt
-
-key = generate_key(32)      # 32 random bytes
-nonce = generate_nonce(12)  # 12-byte nonce for GCM
-salt = generate_salt(16)    # 16-byte salt for PBKDF2
+def derive_key(master_key: bytes, context: str, length: int = 32) -> bytes:
+    """
+    Derive specific key from master key using HMAC.
+    
+    Args:
+        master_key: Master key bytes
+        context: Unique context string (e.g., "encryption", "authentication")
+        length: Desired key length
+        
+    Returns:
+        Derived key
+    """
 ```
 
-### Padding
+**Example:**
 ```python
-from cryptocore.padding import pkcs7_pad, pkcs7_unpad
+from src.kdf.hkdf import derive_key
 
-padded = pkcs7_pad(data, block_size=16)
-unpadded = pkcs7_unpad(padded)
+master_key = b'\x00' * 32  # 256-bit master key
+
+# Derive different keys for different purposes
+encryption_key = derive_key(master_key, "encryption", 32)
+auth_key = derive_key(master_key, "authentication", 32)
+```
+
+## Random Number Generation (from `src/csprng.py`)
+```python
+def get_random_bytes(size: int) -> bytes:
+    """
+    Get cryptographically secure random bytes.
+    
+    Args:
+        size: Number of bytes to generate
+        
+    Returns:
+        Random bytes
+    """
 ```
 
 ## Error Classes
-
 ```python
-from cryptocore.exceptions import (
-    CryptoError,
-    AuthenticationError,  # Raised by GCM on auth failure
-    KeyError,
-    DecryptionError
-)
+from src.modes.gcm import AuthenticationError
 
 try:
-    plaintext = gcm.decrypt(ciphertext, aad=aad)
+    data = gcm.decrypt(ciphertext, aad=aad)
 except AuthenticationError:
-    print("Authentication failed!")
+    print("Authentication failed - possible tampering")
 ```
 
 ## Security Notes
 
 ### Critical Warnings:
-1. **Never use ECB mode** for real data (educational purposes only)
-2. **Always verify authentication** (HMAC/GCM tag) before using data
-3. **Use unique nonces** for GCM - never reuse with same key
-4. **Minimum 100,000 iterations** for PBKDF2
-5. **Store keys securely** - never in source code
+1. **Never reuse nonces in GCM** - reusing nonce with same key breaks security
+2. **Always verify authentication** before using decrypted data
+3. **Use strong keys** - at least 128 bits of entropy
+4. **Minimum 100,000 iterations for PBKDF2** for modern systems
 
 ### Best Practices:
 ```python
-# ✅ Good: Use GCM with unique nonce
+# ✅ Good practice
 gcm = GCM(key)
 ciphertext = gcm.encrypt(data, aad=metadata)
-
-# ✅ Good: Verify before decrypting
 try:
-    plaintext = gcm.decrypt(ciphertext, aad=metadata)
+    decrypted = gcm.decrypt(ciphertext, aad=metadata)
 except AuthenticationError:
-    # Handle tampering
+    # Handle authentication failure
     pass
 
-# ❌ Bad: Using ECB
-from cryptocore.modes import ecb_encrypt  # DON'T USE FOR REAL DATA
+# ❌ Bad practice (don't do this)
+# - Using ECB mode for real data
+# - Reusing nonces in GCM
+# - Hardcoding keys in source code
 ```
 
 ## Complete Example
-
 ```python
-from cryptocore.kdf import pbkdf2_hmac_sha256
-from cryptocore.modes.gcm import GCM
-from cryptocore.random import generate_salt
+from src.kdf.pbkdf2 import pbkdf2_hmac_sha256
+from src.modes.gcm import GCM
+import os
 
 # 1. Derive key from password
-salt = generate_salt(16)
+salt = os.urandom(16)
 key = pbkdf2_hmac_sha256(
     password="UserPassword123!",
     salt=salt,
@@ -191,19 +393,17 @@ key = pbkdf2_hmac_sha256(
     dklen=32
 )
 
-# 2. Encrypt with GCM
-gcm = GCM(key)
-ciphertext = gcm.encrypt(
-    plaintext=sensitive_data,
-    aad=b"user_id:123|timestamp:2024"
-)
+# 2. Encrypt sensitive data
+gcm = GCM(key[:16])  # Use first 16 bytes for AES-128
+sensitive_data = b"Credit card: 1234-5678-9012-3456"
+metadata = b"user_id:123|timestamp:2024-01-15"
 
-# 3. Decrypt and authenticate
+ciphertext = gcm.encrypt(sensitive_data, aad=metadata)
+
+# 3. Decrypt and verify
 try:
-    decrypted = gcm.decrypt(
-        ciphertext=ciphertext,
-        aad=b"user_id:123|timestamp:2024"
-    )
-    print("Success! Data authenticated.")
+    decrypted = gcm.decrypt(ciphertext, aad=metadata)
+    print(f"Decrypted: {decrypted.decode()}")
 except AuthenticationError:
-    print("WARNING: Data tampered or wrong key!")
+    print("Security alert: Authentication failed!")
+```
