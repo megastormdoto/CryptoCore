@@ -22,47 +22,14 @@ cd ~/CryptoCore (в папку проекта переходим)
 
 echo "Test data for CBC from megastorm" > megadoto.txt
 
-openssl enc -aes-128-cbc -in test_linux.txt -out test_linux.enc -K 000102030405060708090A0B0C0D0E0F -iv 000102030405060708090A0B0C0D0E0F
+openssl enc -aes-128-cbc -in megadoto.txt -out megadoto.enc -K 000102030405060708090A0B0C0D0E0F -iv 000102030405060708090A0B0C0D0E0F
 
-openssl enc -aes-128-cbc -d -in test_linux.enc -out test_linux.dec -K 000102030405060708090A0B0C0D0E0F -iv 000102030405060708090A0B0C0D0E0F
+openssl enc -aes-128-cbc -d -in megadoto.enc -out megadoto_decrypted.txt -K 000102030405060708090A0B0C0D0E0F -iv 000102030405060708090A0B0C0D0E0F
 
-diff test_linux.txt test_linux.dec && echo "шифрование и дешифрование CBC работает через OpenSSL"
-
-
+diff megadoto.txt megadoto_decrypted.txt && echo "шифрование и дешифрование CBC работает через OpenSSL"
 
 
-echo "тест cbc файла для шифрования и дешифрования" > megastorm_test.txt
 
-python -c "
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad, unpad
-import binascii
-
-key = binascii.unhexlify('000102030405060708090A0B0C0D0E0F')
-iv = binascii.unhexlify('000102030405060708090A0B0C0D0E0F')
-
-with open('megastorm_test.txt', 'rb') as f:
-    data = f.read()
-
-cipher = AES.new(key, AES.MODE_CBC, iv)
-encrypted = cipher.encrypt(pad(data, 16))
-with open('megastorm_test.enc', 'wb') as f:
-    f.write(encrypted)
-
-decipher = AES.new(key, AES.MODE_CBC, iv)
-decrypted = unpad(decipher.decrypt(encrypted), 16)
-with open('megastorm_test.dec', 'wb') as f:
-    f.write(decrypted)
-
-if data == decrypted:
-    print('Тест прошел, все успешно')
-else:
-    print('Ошибка')
-"
-
-ls -la megastorm_test.* (смотрим что файлы создались)
-
-diff megastorm_test.txt megastorm_test.dec (различий не выявлено проверяем)
 
 
 
@@ -71,4 +38,3 @@ pip install numpy
 
 python -m pytest tests/ -q --tb=no (проверка всех тестов с итоговой статистикой)
 
-   
